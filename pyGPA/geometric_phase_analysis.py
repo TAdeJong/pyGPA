@@ -4,15 +4,12 @@ import os
 import dask.array as da
 import scipy.ndimage as ndi
 from scipy.optimize import least_squares
-import ipywidgets as widgets
-from ipywidgets import interactive
-import colorcet as cc
 from moisan2011 import per
 from numba import njit, prange
 from skimage.feature import peak_local_max
-from weighed_phase_unwrap.phase_unwrap import phase_unwrap, phase_unwrap_ref_prediff, _wrapToPi
+from phase_unwrap import phase_unwrap, phase_unwrap_ref_prediff
 #from imagetools import gauss_homogenize2, fftplot, fftbounds trim_nans2
-from mathtools import fit_plane, periodic_average
+from mathtools import fit_plane, periodic_average, wrapToPi
 from itertools import combinations
 
 
@@ -105,8 +102,8 @@ def reconstruct_u_inv_from_phases(kvecs, phases, weights, weighted_unwrap=True):
     """
     K = 2*np.pi*(kvecs)
     #b = b - b.mean(axis=(1,2), keepdims=True)
-    dbdx = _wrapToPi(np.diff(phases, axis=2))
-    dbdy = _wrapToPi(np.diff(phases, axis=1))
+    dbdx = wrapToPi(np.diff(phases, axis=2))
+    dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
     if weighted_unwrap:
@@ -489,7 +486,7 @@ def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
             g['w'][t] = np.array([wx,wy])
             g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx),(wy-ky)],axis=-1))
     g['w'] = np.moveaxis(g['w'],-1,0)
-    g['grad'] = _wrapToPi(g['grad']*2)/4/np.pi
+    g['grad'] = wrapToPi(g['grad']*2)/4/np.pi
     return g
 
 def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
@@ -514,7 +511,7 @@ def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
             g['w'][t] = np.array([wx,wy])
             g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx),(wy-ky)],axis=-1))
     g['w'] = np.moveaxis(g['w'],-1,0)
-    g['grad'] = _wrapToPi(g['grad']*2)/4/np.pi
+    g['grad'] = wrapToPi(g['grad']*2)/4/np.pi
     return g
 
 def wfr4(image, sigma, klist, kref, dk):
@@ -601,8 +598,8 @@ def calc_props(U, nmperpixel):
 
 def calc_props_from_phases2(kvecs, phases, weights, nmperpixel):
     K = 2*np.pi*(kvecs)
-    dbdx , dbdy = _wrapToPi(np.stack(np.gradient(phases, axis=(1,2)))*2)/2/nmperpixel
-    #dbdy = _wrapToPi(np.diff(phases, axis=1))
+    dbdx , dbdy = wrapToPi(np.stack(np.gradient(phases, axis=(1,2)))*2)/2/nmperpixel
+    #dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = GPA.myweighed_lstsq(dbdx, K, weights)
     dudy = GPA.myweighed_lstsq(dbdy, K, weights)
     J = -np.stack([dudx,dudy], axis=1) 
@@ -617,8 +614,8 @@ def calc_props_from_phases2(kvecs, phases, weights, nmperpixel):
 def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     K = 2*np.pi*(kvecs)
     #b = b - b.mean(axis=(1,2), keepdims=True)
-    #dbdx = _wrapToPi(np.diff(phases, axis=2))
-    #dbdy = _wrapToPi(np.diff(phases, axis=1))
+    #dbdx = wrapToPi(np.diff(phases, axis=2))
+    #dbdy = wrapToPi(np.diff(phases, axis=1))
     #TODO: make a nice reshape for this call.
     dudx = GPA.myweighed_lstsq(grads[...,0], K, weights)
     dudy = GPA.myweighed_lstsq(grads[...,1], K, weights)
