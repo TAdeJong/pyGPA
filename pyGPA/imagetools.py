@@ -1,5 +1,6 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import scipy.ndimage as ndi
 
 def fftbounds(n, d=1):
     """Return the frequency edges for use with pcolormesh or similar"""
@@ -32,21 +33,23 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
     return im
 
 
-def gauss_homogenize2(image, mask, sigma):
+def gauss_homogenize2(image, mask, sigma, nan_scale=None):
+    """Homogenize image by dividing by a 
+    Gaussian filtered version of image, ignoring
+    areas where mask is False.
+    If nan_scale is given, scale all values not covered
+    by the masked image by nan_scale.
+    """
     VV = ndi.gaussian_filter(np.where(mask, image, 0), 
                              sigma=sigma)
     VV /= ndi.gaussian_filter(mask.astype(image.dtype), 
                               sigma=sigma)
-
+    if nan_scale is not None:
+        VV = np.nan_to_num(VV, nan=nan_scale)
     return image / VV
 
 def gauss_homogenize3(image, mask, sigma):
-    VV = ndi.gaussian_filter(np.where(mask, image, 0), 
-                             sigma=sigma)
-    VV /= ndi.gaussian_filter(mask.astype(image.dtype), 
-                              sigma=sigma)
-    VV = np.nan_to_num(VV, nan=1)
-    return image / VV
+    return gauss_homogenize2(image, mask, sigma, nan_scale=1)
 
 def trim_nans(image):
     """Trim any rows and columns containing only nans from the image

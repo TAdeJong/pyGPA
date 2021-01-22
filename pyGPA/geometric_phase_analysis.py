@@ -7,10 +7,12 @@ from scipy.optimize import least_squares
 from moisan2011 import per
 from numba import njit, prange
 from skimage.feature import peak_local_max
-from phase_unwrap import phase_unwrap, phase_unwrap_ref_prediff
-#from imagetools import gauss_homogenize2, fftplot, fftbounds trim_nans2
-from mathtools import fit_plane, periodic_average, wrapToPi
+from .phase_unwrap import phase_unwrap, phase_unwrap_ref_prediff
+#from .imagetools import gauss_homogenize2, fftplot, fftbounds trim_nans2
+from .imagetools import gauss_homogenize2, fftbounds, fftplot
+from .mathtools import fit_plane, periodic_average, wrapToPi
 from itertools import combinations
+from latticegen.transformations import rotate
 
 
 def GPA(image, kx, ky, sigma=22):
@@ -178,8 +180,11 @@ def ratio2angle(R):
     $ \theta = 2 \arcsin(R/2) $"""
     return np.rad2deg(2*np.arcsin(R/2))
 
-def f2angle(f, nmperpixel=NMPERPIXEL):
-    graphene_linespacing = 0.5*np.sqrt(3)*0.246
+def f2angle(f, nmperpixel=1., a_0=0.246):
+    """For a given lin frequency f (==2*pi*|k|),
+    calculate the corresponding twist angle.
+    """
+    graphene_linespacing = 0.5*np.sqrt(3)*a_0
     linespacing = nmperpixel/f
     return ratio2angle(graphene_linespacing / linespacing)
 
@@ -197,7 +202,7 @@ def remove_negative_duplicates(ks):
                 npks.append(tuple(np.sign(k[1])*k))
     return np.array(npks)
 
-def decrease_threshold(t):
+def _decrease_threshold(t):
     if t > 0.001:
         if t >= 0.2:
             t = t-0.1
@@ -205,7 +210,9 @@ def decrease_threshold(t):
             t = t/2
     return t
 
-def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200), sigma=1.5):
+def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200), sigma=1.5, NMPERPIXEL=1.):
+    """Attempt to extract primary k-vectors from an image from a smoothed
+    version of the Fourier transform."""
     image = image - image.mean()
     pd, _ = per(image, inverse_dft=False)
     fftim = np.abs(np.fft.fftshift(pd))
@@ -229,8 +236,8 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
         newparams = True
         if len(all_ks) == 0:
             print(f"no ks at: {threshold:.4f}")
-            if threshold > decrease_threshold(threshold):
-                threshold = decrease_threshold(threshold)
+            if threshold > _decrease_threshold(threshold):
+                threshold = _decrease_threshold(threshold)
             else:
                 print("No ks found at minimum threshold!")
                 newparams = False
@@ -242,8 +249,8 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
                 print(f"cminlength {coordsminlength:.2f}")
             elif threshold > 0.2*np.max([smooth[cindex[0],cindex[1]] for cindex in cindices]):
                 threshold = 0.2*np.max([smooth[cindex[0],cindex[1]] for cindex in cindices])
-            elif threshold > decrease_threshold(threshold):
-                    threshold = decrease_threshold(threshold)
+            elif threshold > _decrease_threshold(threshold):
+                    threshold = _decrease_threshold(threshold)
                     print(f"new thres: {threshold:.2f}")
             else:
                 print("Can't find enough ks!")
@@ -268,9 +275,9 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
             #primary_ks = all_ks[np.argpartition(np.abs(knorms-knorms.mean()), 3)[:3]]
             print("all_ks > 3 but not enough primary_ks, selecting closest to triangle")
             primary_ks = select_closest_to_triangle(all_ks)
-        elif threshold > decrease_threshold(threshold) and not newparams: 
+        elif threshold > _decrease_threshold(threshold) and not newparams: 
             print(f"pks<3, all_ks < 6, decreasing threshold {threshold:.3f}")
-            threshold = decrease_threshold(threshold)
+            threshold = _decrease_threshold(threshold)
             primary_ks, all_ks = extract_primary_ks(image, plot=False, threshold=threshold, 
                                         sigma=sigma,
                                         pix_norm_range=pix_norm_range)
@@ -280,8 +287,6 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
     if plot:
         fig,ax = plt.subplots(ncols=2,figsize=[12,8])
         fftplot(smooth, d=NMPERPIXEL, ax=ax[0], levels=[smooth.max()*threshold*0.8], contour=False, pcolormesh=False) # , vmin=(smooth.max()*threshold*0.1)
-        #plt.gca().set_xlim([-0.2,0.2])
-        #plt.gca().set_ylim([-0.2,0.2])
         ax[0].set_xlabel('k (periods / nm)')
         ax[0].set_ylabel('k (periods / nm)')
         ax[0].scatter(*(all_ks/NMPERPIXEL).T, color='red', alpha=0.2, s=50)
@@ -307,14 +312,20 @@ def select_closest_to_triangle(ks):
         
 
 def smallest_sum(ks):
-    if len(ks) !=3:
+    if len(ks) != 3:
         return np.nan
-    M = np.ones((3,3))-2*np.eye(3)
+    M = np.ones((3,3)) - 2*np.eye(3)
     sums = M@ks
     return sums[np.argmin(np.linalg.norm(sums,axis=1))]
     
     
-def wff(image, sigma, threshold, wl, wu):
+def wff(image, sigma, threshold, wl, wu, verbose=False):
+    """Windowed Fourier Filtering of image.
+    with gaussian window width sigma,
+    filter such that all frequencies above threshold
+    between frequency boundaries wl and wu are retained
+    The scheme is shown inFig. 3. A fringepattern is transforme
+    """
     s = round(2*sigma)
     yy,xx = np.mgrid[-s:s,-s:s]
     w = np.exp(-(xx**2+yy**2)/(2*sigma**2))
@@ -326,8 +337,9 @@ def wff(image, sigma, threshold, wl, wu):
         for wy in np.arange(wl, wu+wi/2, wi):
             wave = w * np.exp(1j*(wx*xx+wy*yy))
             sf = ndi.convolve(image, wave)
-            #print(f"wy: {wy:.2f}", wave.shape, image.shape, sf.shape)
-            print(np.quantile(np.abs(sf), [0.9,0.99]), [(np.abs(sf)>=thri).sum()for thri in threshold])
+            if verbose:
+                print(np.quantile(np.abs(sf), [0.9,0.99]), 
+                      [(np.abs(sf)>=thri).sum()for thri in threshold])
             for i,g in enumerate(gs):
                 sfi = np.where(np.abs(sf)>=threshold[i], sf, 0.)
                 g += ndi.convolve(sfi, wave)
@@ -343,10 +355,10 @@ def wfr(image, sigma, kx, ky, kw, kstep):
     in a dictionary structure.
     Based directly on original MATLAB algorithm in https://doi.org/10.1016/j.optlaseng.2005.10.012"""
     s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
+    wyy, wxx = np.mgrid[-s:s,-s:s]
     xx, yy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    w = np.exp(-(wxx**2 + wyy**2) / (2*sigma**2))
+    w = w / np.sqrt((w**2).sum())
     g = {'wx': np.zeros_like(image),
          'wy': np.zeros_like(image),
         'phase': np.zeros_like(image),
@@ -354,7 +366,7 @@ def wfr(image, sigma, kx, ky, kw, kstep):
         }
     for wx in np.arange(kx-kw,kx+kw, kstep):
         for wy in np.arange(ky-kw,ky+kw, kstep):
-            sf = GPA.GPA(image, wx, wy, sigma)
+            sf = GPA(image, wx, wy, sigma)
             sf *= np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy))
             t = np.abs(sf) > g['r']
             g['r'][t] = np.abs(sf)[t]
@@ -379,7 +391,7 @@ def wfr2(image, sigma, kx, ky, kw, kstep):
         }
     for wx in np.arange(kx-kw,kx+kw, kstep):
         for wy in np.arange(ky-kw,ky+kw, kstep):
-            sf = GPA.GPA(image, wx, wy, sigma)
+            sf = GPA(image, wx, wy, sigma)
             sf *= np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy))
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t]
@@ -400,7 +412,7 @@ def wfr3(image, sigma, klist, kref):
         'lockin': np.zeros_like(image, dtype=np.complex),
         }
     for wx,wy in klist:
-        sf = GPA.GPA(image, wx, wy, sigma)
+        sf = GPA(image, wx, wy, sigma)
         sf *= np.exp(-2j*np.pi*((wx-kref[0])*xx+(wy-kref[1])*yy))
         t = np.abs(sf) > np.abs(g['lockin'])
         g['lockin'][t] = sf[t]
@@ -424,7 +436,7 @@ def optwfr2(image, sigma, kx, ky, kw, kstep):
         }
     for wx in np.arange(kx-kw,kx+kw, kstep):
         for wy in np.arange(ky-kw,ky+kw, kstep):
-            sf = GPA.optGPA(image, (wx, wy), sigma)
+            sf = optGPA(image, (wx, wy), sigma)
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
             g['w'][t] = np.array([wx,wy])
@@ -451,7 +463,7 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep):
         }
     for wx in np.arange(kx-kw,kx+kw, kstep):
         for wy in np.arange(ky-kw,ky+kw, kstep):
-            sf = GPA.optGPA(image, (wx, wy), sigma)
+            sf = optGPA(image, (wx, wy), sigma)
             sf *= np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy))
             grad = wrapToPi(np.stack(np.gradient(-np.angle(sf)), axis=-1)*2)/4/np.pi
             t = np.abs(sf) > np.abs(g['lockin'])
@@ -479,7 +491,7 @@ def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
         }
     for wx in np.arange(kx-kw,kx+kw, kstep):
         for wy in np.arange(ky-kw,ky+kw, kstep):
-            sf = GPA.optGPA(image, (wx, wy), sigma)
+            sf = optGPA(image, (wx, wy), sigma)
             t = np.abs(sf) > np.abs(g['lockin'])
             grad =  np.stack(np.gradient(-np.angle(sf)), axis=-1)[t]
             g['lockin'][t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
@@ -503,7 +515,7 @@ def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
     for wx in np.arange(kx-kw,kx+kw, kstep):
         wys = np.arange(ky-kw,ky+kw, kstep)
         wpairs = da.stack(([wx]*len(wys), wys),axis=-1).rechunk({0:3})
-        sf = GPA.vecGPA(image, wpairs, sigma)
+        sf = vecGPA(image, wpairs, sigma)
         for i,wy in enumerate(wys):
             t = np.abs(sf[i]) > np.abs(g['lockin'])
             grad =  np.stack(np.gradient(-np.angle(sf[i])), axis=-1)[t]
@@ -530,7 +542,7 @@ def wfr4(image, sigma, klist, kref, dk):
     g['w'][...,0] = klist[0,0]
     g['w'][...,1] = klist[0,1]
     for wx,wy in klist:
-        sf = GPA.GPA(image, wx, wy, sigma)
+        sf = GPA(image, wx, wy, sigma)
         sf *= np.exp(-2j*np.pi*((wx-kref[0])*xx+(wy-kref[1])*yy))
         t = np.abs(sf) > np.abs(g['lockin'])
         t = t & (np.linalg.norm(g['w'] - np.array([wx,wy]),axis=-1) < 2*np.sqrt(2)*dk)
@@ -544,7 +556,9 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
     """From a list of k-vectors pks, determine for each k-vector a list
     of k-vectors, spaced dk, with at max `kmax` times the max k-vector amplitude
     and at least `kmin` times that, where each vector in the list is not closer
-    to any other kvec in pks."""
+    to any other kvec in pks.
+    Used in conjunction with wfr3 or wfr4
+    """
     doubleks = np.concatenate([pks,-pks])
     kmax = np.linalg.norm(pks, axis=1).max()*kmax
     kmin = np.linalg.norm(pks, axis=1).max()*kmin
@@ -600,8 +614,8 @@ def calc_props_from_phases2(kvecs, phases, weights, nmperpixel):
     K = 2*np.pi*(kvecs)
     dbdx , dbdy = wrapToPi(np.stack(np.gradient(phases, axis=(1,2)))*2)/2/nmperpixel
     #dbdy = wrapToPi(np.diff(phases, axis=1))
-    dudx = GPA.myweighed_lstsq(dbdx, K, weights)
-    dudy = GPA.myweighed_lstsq(dbdy, K, weights)
+    dudx = myweighed_lstsq(dbdx, K, weights)
+    dudy = myweighed_lstsq(dbdy, K, weights)
     J = -np.stack([dudx,dudy], axis=1) 
     J = np.moveaxis(J,(0,1), (-2,-1))
     J = (np.eye(2) + J)
@@ -617,8 +631,8 @@ def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     #dbdx = wrapToPi(np.diff(phases, axis=2))
     #dbdy = wrapToPi(np.diff(phases, axis=1))
     #TODO: make a nice reshape for this call.
-    dudx = GPA.myweighed_lstsq(grads[...,0], K, weights)
-    dudy = GPA.myweighed_lstsq(grads[...,1], K, weights)
+    dudx = myweighed_lstsq(grads[...,0], K, weights)
+    dudy = myweighed_lstsq(grads[...,1], K, weights)
     #dudx = myweighed_lstsq(grad[:,0], K, weights)
     #dudy = myweighed_lstsq(grad[:,1], K, weights)
     J = -np.stack([dudx,dudy], axis=1) #*nmperpixel?
