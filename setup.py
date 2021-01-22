@@ -23,6 +23,7 @@ setuptools.setup(
         "dask",
         "scipy",
         "numpy",
+        "numba",
         "scikit-image",
         ],
 )
