@@ -193,13 +193,15 @@ def remove_negative_duplicates(ks):
     return the array of vectors without negative duplicates
     of the vectors (x-coord first, if zero non-negative y)
     """
+    if ks.shape[0] == 0:
+        return ks
     npks = []
-    for k in ks:
-        if tuple(-k) not in npks and tuple(k) not in npks:
-            if np.sign(k[0]) != 0:
-                npks.append(tuple(np.sign(k[0])*k))
-            else: 
-                npks.append(tuple(np.sign(k[1])*k))
+    nonneg = np.where(np.sign(ks[:,[0]]) != 0, np.sign(ks[:,[0]])*ks, np.sign(ks[:,[1]])*ks)
+    npks = [nonneg[0]]
+    atol = 1e-5*np.linalg.norm(nonneg, axis=1).mean()
+    for k in nonneg[1:]:
+        if not np.any(np.isclose(k, npks, atol=atol)):
+            npks.append(k)
     return np.array(npks)
 
 def _decrease_threshold(t):
@@ -212,7 +214,8 @@ def _decrease_threshold(t):
 
 def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200), sigma=1.5, NMPERPIXEL=1.):
     """Attempt to extract primary k-vectors from an image from a smoothed
-    version of the Fourier transform."""
+    version of the Fourier transform.
+    """
     image = image - image.mean()
     pd, _ = per(image, inverse_dft=False)
     fftim = np.abs(np.fft.fftshift(pd))
@@ -229,7 +232,7 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
     
     #coords = np.vstack((coords, [0,0])) # reinclude center spot
     all_ks = np.array([kxs[cindices.T[0]], kys[cindices.T[1]]]).T
-    #Select only one direction for each pair of k,-k
+    # Select only one direction for each pair of k,-k
     all_ks = remove_negative_duplicates(all_ks)
     newparams = False    
     if len(all_ks) < 3:
@@ -307,11 +310,14 @@ def select_closest_to_triangle(ks):
     print(f"closest triangle: {ks}")
     combis = list(combinations(ks,3))
     sums = [np.linalg.norm(smallest_sum(combi)) for combi in combis]
-    #sums = [np.linalg.norm(smallest_sum2(combi))/np.min(np.linalg.norm(combis,axis=1)) for combi in combis]
     return np.array(combis[np.argmin(sums)])
         
 
 def smallest_sum(ks):
+    """For a set of 3 k-vectors, return
+    the smallest possible sum of the three
+    with one sign flipped.
+    """
     if len(ks) != 3:
         return np.nan
     M = np.ones((3,3)) - 2*np.eye(3)
@@ -626,6 +632,7 @@ def calc_props_from_phases2(kvecs, phases, weights, nmperpixel):
     return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
 
 def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
+    """Not functional yet!"""
     K = 2*np.pi*(kvecs)
     #b = b - b.mean(axis=(1,2), keepdims=True)
     #dbdx = wrapToPi(np.diff(phases, axis=2))
