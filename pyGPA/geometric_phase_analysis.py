@@ -504,7 +504,7 @@ def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
             g['w'][t] = np.array([wx,wy])
             g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx),(wy-ky)],axis=-1))
     g['w'] = np.moveaxis(g['w'],-1,0)
-    g['grad'] = wrapToPi(g['grad']*2)/4/np.pi
+    g['grad'] = wrapToPi(g['grad']*2)/2
     return g
 
 def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
@@ -529,7 +529,7 @@ def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
             g['w'][t] = np.array([wx,wy])
             g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx),(wy-ky)],axis=-1))
     g['w'] = np.moveaxis(g['w'],-1,0)
-    g['grad'] = wrapToPi(g['grad']*2)/4/np.pi
+    g['grad'] = wrapToPi(g['grad']*2)/2
     return g
 
 def wfr4(image, sigma, klist, kref, dk):
@@ -607,8 +607,14 @@ def calc_props_eps(U, nmperpixel, Uinv=None, edge=0):
     return moireangle, aniangle, alpha, eps
     
 def calc_props(U, nmperpixel):
-    J = np.stack(np.gradient(-U, nmperpixel, axis=(1,2)), axis=1)
-    J = np.moveaxis(J,(0,1), (-2,-1))
+    """From the displacement field U, calculate the following properties:
+    -local angle w.r.t. absolute reference
+    -local direction of the anisotropy
+    -local unit cell scaling factor
+    -local anisotropy magnitude
+    """
+    J = np.stack(np.gradient(-U, nmperpixel, axis=(1,2)), axis=-1)
+    J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
     u,s,v = np.linalg.svd(J)
     angle = (u@v)
@@ -616,14 +622,15 @@ def calc_props(U, nmperpixel):
     aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
     return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
 
-def calc_props_from_phases2(kvecs, phases, weights, nmperpixel):
+def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
+    """Calculate properties from phases."""
     K = 2*np.pi*(kvecs)
     dbdx , dbdy = wrapToPi(np.stack(np.gradient(phases, axis=(1,2)))*2)/2/nmperpixel
     #dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
-    J = -np.stack([dudx,dudy], axis=1) 
-    J = np.moveaxis(J,(0,1), (-2,-1))
+    J = -np.stack([dudx,dudy], axis=-1)
+    J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
     u,s,v = np.linalg.svd(J)
     angle = (u@v)
@@ -632,7 +639,8 @@ def calc_props_from_phases2(kvecs, phases, weights, nmperpixel):
     return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
 
 def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
-    """Not functional yet!"""
+    """Calculate properties directly from phase gradients.
+    Might not yet properly take nmperpixel into account"""
     K = 2*np.pi*(kvecs)
     #b = b - b.mean(axis=(1,2), keepdims=True)
     #dbdx = wrapToPi(np.diff(phases, axis=2))
@@ -642,8 +650,8 @@ def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     dudy = myweighed_lstsq(grads[...,1], K, weights)
     #dudx = myweighed_lstsq(grad[:,0], K, weights)
     #dudy = myweighed_lstsq(grad[:,1], K, weights)
-    J = -np.stack([dudx,dudy], axis=1) #*nmperpixel?
-    J = np.moveaxis(J,(0,1), (-2,-1))
+    J = np.stack([dudx,dudy], axis=-1) #*nmperpixel?
+    J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
     u,s,v = np.linalg.svd(J)
     angle = (u@v)
