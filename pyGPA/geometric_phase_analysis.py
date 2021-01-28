@@ -200,7 +200,7 @@ def remove_negative_duplicates(ks):
     npks = [nonneg[0]]
     atol = 1e-5*np.linalg.norm(nonneg, axis=1).mean()
     for k in nonneg[1:]:
-        if not np.any(np.isclose(k, npks, atol=atol)):
+        if not np.any(np.all(np.isclose(k, npks, atol=atol),axis=1)):
             npks.append(k)
     return np.array(npks)
 
@@ -623,7 +623,7 @@ def calc_props(U, nmperpixel):
     return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
 
 def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
-    """Calculate properties from phases."""
+    """Calculate properties from phases directly."""
     K = 2*np.pi*(kvecs)
     dbdx , dbdy = wrapToPi(np.stack(np.gradient(phases, axis=(1,2)))*2)/2/nmperpixel
     #dbdy = wrapToPi(np.diff(phases, axis=1))
@@ -640,17 +640,14 @@ def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
 
 def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     """Calculate properties directly from phase gradients.
-    Might not yet properly take nmperpixel into account"""
+    Using phase gradients calculated in wfr directly counters
+    artefacts at reference k-vector boundaries.
+    """
     K = 2*np.pi*(kvecs)
-    #b = b - b.mean(axis=(1,2), keepdims=True)
-    #dbdx = wrapToPi(np.diff(phases, axis=2))
-    #dbdy = wrapToPi(np.diff(phases, axis=1))
-    #TODO: make a nice reshape for this call.
+    #TODO: make a nice reshape for this call?
     dudx = myweighed_lstsq(grads[...,0], K, weights)
     dudy = myweighed_lstsq(grads[...,1], K, weights)
-    #dudx = myweighed_lstsq(grad[:,0], K, weights)
-    #dudy = myweighed_lstsq(grad[:,1], K, weights)
-    J = np.stack([dudx,dudy], axis=-1) #*nmperpixel?
+    J = np.stack([dudx,dudy], axis=-1) / nmperpixel
     J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
     u,s,v = np.linalg.svd(J)
