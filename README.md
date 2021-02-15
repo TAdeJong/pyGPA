@@ -1,12 +1,16 @@
 # pyGPA
 
-A python package collecting an assortment of geometric phase analysis algorithms and tools to analyse regular (moiré) lattices.
+A python package collecting an assortment of Geometric Phase Analysis algorithms and tools to analyse regular (moiré) lattices. Geometric Phase Analysis enables the extraction of a _displacement field_ from a distorted lattice, by comparing to reference waves. As such, it is a spatial variant of lock-in amplification.
+
+From this displacement field, it is possible to extract local properties of the underlying lattice, but also to correct for the distortion, a process known in STM as the Lawler-Fujita algorithm \[[1](https://doi.org/10.1038/nature09169)\].
 
 ## See also
 
 https://github.com/TAdeJong/moire-lattice-generator
 
 https://arxiv.org/abs/2008.13766 (Code not actually used for that work, but builts upon the ideas)
+
+https://github.com/TAdeJong/weighed_phase_unwrap
 
 # Acknowledgement
 
