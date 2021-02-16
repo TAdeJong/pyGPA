@@ -8,7 +8,7 @@ From this displacement field, it is possible to extract local properties of the 
 
 https://github.com/TAdeJong/moire-lattice-generator
 
-https://arxiv.org/abs/2008.13766 (Code not actually used for that work, but builts upon the ideas)
+https://arxiv.org/abs/2008.13766 (Code not actually used for that work, but builds upon the ideas)
 
 https://github.com/TAdeJong/weighed_phase_unwrap
 
