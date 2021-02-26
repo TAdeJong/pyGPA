@@ -592,6 +592,23 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
         klists.append(klist)
     return klists
 
+def extract_displacement_field(image, kvecs):
+    """Top level convenience function"""
+    gs = []
+    kw = np.linalg.norm(kvecs,axis=1).mean()/2.5
+    sigma = 10
+    kstep = kw/5
+    for pk in kvecs:
+        g = wfr2_grad_opt(deformed-deformed.mean(), sigma,
+                          pk[0]*1., pk[1]*1., kw=kw, kstep=kstep)
+        gs.append(g)
+    phases = np.stack([np.angle(g['lockin']) for g in gs])
+    mask = np.zeros_like(image, dtype=bool)
+    dr = 2*sigma
+    mask[dr:-dr,dr:-dr] = 1.
+    weights = np.stack([np.abs(g['lockin']) for g in gs]) * (mask+1e-6)
+    u = GPA.reconstruct_u_inv_from_phases(kvecs, phases, weights)
+    return u
 
 def calc_props_eps(U, nmperpixel, Uinv=None, edge=0):
     if Uinv is None:

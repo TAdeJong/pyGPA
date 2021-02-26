@@ -1,6 +1,10 @@
+import collections
+
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndi
+
+from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
 def fftbounds(n, d=1):
     """Return the frequency edges for use with pcolormesh or similar"""
@@ -31,6 +35,25 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
             ax.contour(fftim.T,colors='white', origin='lower', extent=extent, alpha=0.3, levels=levels)
     ax.set_aspect('equal')
     return im
+
+def indicate_k(pks, i, ax=None, inset=True, size="25%"):
+    if not ax:
+        ax=plt.gca()
+    if inset:
+        ax = inset_axes(ax, width="25%", height="25%", loc=2)
+        ax.tick_params(labelleft=False, labelbottom=False, direction='in', length=0)
+        for axis in ['top','bottom','left','right']:
+            ax.spines[axis].set_color(f"None")
+        ax.patch.set_alpha(0.0)
+    ax.scatter(*np.concatenate([pks,-pks, [[0,0]]]).T, color='gray', s=10)
+    ax.scatter(pks[i,0], pks[i,1], color='red', s=30)
+    if isinstance(i, collections.Iterable):
+        for j in i:
+            ax.arrow(0,0,pks[j,0], pks[j,1], length_includes_head=True)
+    else:
+        ax.arrow(0,0,pks[i,0], pks[i,1], length_includes_head=True)
+    ax.set_aspect('equal')
+    return ax
 
 
 def gauss_homogenize2(image, mask, sigma, nan_scale=None):
