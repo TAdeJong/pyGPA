@@ -1,4 +1,5 @@
 import numpy as np
+import scipy.optimize as spo
 
 def periodic_average(X, period=2*np.pi):
     Y = np.exp(1j * 2*np.pi / period * X)
@@ -14,7 +15,9 @@ def lfit_func_mask(x, image, xx, yy, mask):
     return (image - (ax*xx + ay*yy + b))[mask].flatten()
 
 def fit_plane(image, verbose=False):
-    lxx, lyy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
+    lxx, lyy = np.meshgrid(np.arange(image.shape[0]),
+                           np.arange(image.shape[1]),
+                           indexing='ij')
     x0 = np.zeros(3)
     res = least_squares(lfit_func, x0, 
                         loss='huber', 
@@ -24,14 +27,16 @@ def fit_plane(image, verbose=False):
     return res.x
 
 def fit_plane_masked(image, verbose=False, mask=False):
-    lxx, lyy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
+    lxx, lyy = np.meshgrid(np.arange(image.shape[0]),
+                           np.arange(image.shape[1]),
+                           indexing='ij')
     x0 = np.zeros(3)
     if mask:
-        res = least_squares(lfit_func_mask, x0, 
+        res = spo.least_squares(lfit_func_mask, x0,
                             loss='huber', 
                             args=(image, lxx, lyy, mask))
     else:
-        res = least_squares(lfit_func, x0, 
+        res = spo.least_squares(lfit_func, x0,
                             loss='huber', 
                             args=(image, lxx, lyy))
     if verbose:

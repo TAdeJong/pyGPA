@@ -259,7 +259,8 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
                 print("Can't find enough ks!")
                 newparams = False
         if newparams:
-            primary_ks, all_ks = extract_primary_ks(image, plot=False, threshold=threshold, 
+            primary_ks, all_ks = extract_primary_ks(image, plot=False,
+                                                    threshold=threshold,
                                                     sigma=sigma,
                                                     pix_norm_range=pix_norm_range)
         else:
@@ -281,25 +282,35 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
         elif threshold > _decrease_threshold(threshold) and not newparams: 
             print(f"pks<3, all_ks < 6, decreasing threshold {threshold:.3f}")
             threshold = _decrease_threshold(threshold)
-            primary_ks, all_ks = extract_primary_ks(image, plot=False, threshold=threshold, 
-                                        sigma=sigma,
-                                        pix_norm_range=pix_norm_range)
+            primary_ks, all_ks = extract_primary_ks(image, plot=False,
+                                                    threshold=threshold,
+                                                    sigma=sigma,
+                                                    pix_norm_range=pix_norm_range)
         else:
             print("pks < aks=3", len(all_ks), len(primary_ks))
             primary_ks = all_ks.copy()
     if plot:
-        fig,ax = plt.subplots(ncols=2,figsize=[12,8])
-        fftplot(smooth, d=NMPERPIXEL, ax=ax[0], levels=[smooth.max()*threshold*0.8], contour=False, pcolormesh=False) # , vmin=(smooth.max()*threshold*0.1)
+        fig,ax = plt.subplots(ncols=2, figsize=[12,8])
+        fftplot(smooth, d=NMPERPIXEL, ax=ax[0],
+                levels=[smooth.max()*threshold*0.8],
+                contour=False, pcolormesh=False)
         ax[0].set_xlabel('k (periods / nm)')
         ax[0].set_ylabel('k (periods / nm)')
-        ax[0].scatter(*(all_ks/NMPERPIXEL).T, color='red', alpha=0.2, s=50)
-        ax[0].scatter(*(primary_ks/NMPERPIXEL).T, color='black', alpha=0.7, s=50, marker='x')
+        ax[0].scatter(*(all_ks/NMPERPIXEL).T, color='red',
+                      alpha=0.2, s=50)
+        ax[0].scatter(*(primary_ks/NMPERPIXEL).T, color='black',
+                      alpha=0.7, s=50, marker='x')
         
-        circle = plt.Circle((0, 0), 2.*knorms.min()/NMPERPIXEL, edgecolor='y', fill=False, alpha=0.6)
+        circle = plt.Circle((0, 0), 2.*knorms.min()/NMPERPIXEL,
+                            edgecolor='y', fill=False, alpha=0.6)
         ax[0].add_artist(circle)
+        axlim = kxs[center[0]+pix_norm_range[1]]
+        ax[0].set_xlim(-axlim,axlim)
+        ax[0].set_ylim(-axlim,axlim)
         ax[1].imshow(image.T)
         for r in [kxs[center[0]+s] for s in pix_norm_range]:
-            circle = plt.Circle((0, 0), r/NMPERPIXEL, edgecolor='w', fill=False, alpha=0.6)
+            circle = plt.Circle((0, 0), r/NMPERPIXEL,
+                                edgecolor='w', fill=False, alpha=0.6)
             ax[0].add_artist(circle)
         plt.title(plot)
     return primary_ks, all_ks
@@ -427,7 +438,6 @@ def wfr3(image, sigma, klist, kref):
     return g
 
 
-
 def optwfr2(image, sigma, kx, ky, kw, kstep):
     """Optimized version of wfr2.
     Optimization in amount of computation done in each step by only
@@ -448,8 +458,6 @@ def optwfr2(image, sigma, kx, ky, kw, kstep):
             g['w'][t] = np.array([wx,wy])
     g['w'] = np.moveaxis(g['w'],-1,0)
     return g
-
-
 
 
 def wfr2_grad(image, sigma, kx, ky, kw, kstep):
@@ -495,14 +503,14 @@ def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
         'lockin': np.zeros_like(image, dtype=np.complex),
          'grad': np.zeros(image.shape+(2,)), 
         }
-    for wx in np.arange(kx-kw,kx+kw, kstep):
-        for wy in np.arange(ky-kw,ky+kw, kstep):
+    for wx in np.arange(kx-kw, kx+kw, kstep):
+        for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
             t = np.abs(sf) > np.abs(g['lockin'])
             grad =  np.stack(np.gradient(-np.angle(sf)), axis=-1)[t]
-            g['lockin'][t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
+            g['lockin'][t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx + (wy-ky)*yy)[t])
             g['w'][t] = np.array([wx,wy])
-            g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx),(wy-ky)],axis=-1))
+            g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx), (wy-ky)], axis=-1))
     g['w'] = np.moveaxis(g['w'],-1,0)
     g['grad'] = wrapToPi(g['grad']*2)/2
     return g
@@ -616,11 +624,7 @@ def calc_props(U, nmperpixel):
     J = np.stack(np.gradient(-U, nmperpixel, axis=(1,2)), axis=-1)
     J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
-    u,s,v = np.linalg.svd(J)
-    angle = (u@v)
-    moireangle = np.rad2deg(np.arctan2(angle[...,1,0], angle[...,0,0]))
-    aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
-    return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
+    return props_from_J(J)
 
 def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
     """Calculate properties from phases directly."""
@@ -632,11 +636,7 @@ def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
     J = -np.stack([dudx,dudy], axis=-1)
     J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
-    u,s,v = np.linalg.svd(J)
-    angle = (u@v)
-    moireangle = np.rad2deg(np.arctan2(angle[...,1,0], angle[...,0,0]))
-    aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
-    return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
+    return props_from_J(J)
 
 def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     """Calculate properties directly from phase gradients.
@@ -650,10 +650,12 @@ def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     J = np.stack([dudx,dudy], axis=-1) / nmperpixel
     J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
+    return props_from_J(J)
+
+
+def props_from_J(J):
     u,s,v = np.linalg.svd(J)
     angle = (u@v)
     moireangle = np.rad2deg(np.arctan2(angle[...,1,0], angle[...,0,0]))
     aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
     return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
-
-
