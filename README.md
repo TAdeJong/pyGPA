@@ -2,7 +2,7 @@
 
 A python package collecting an assortment of Geometric Phase Analysis algorithms and tools to analyse regular (moiré) lattices. 
 
-Geometric Phase Analysis enables the extraction of a _displacement field_ from a distorted lattice, by comparing to reference waves. As such, it is a spatial variant of lock-in amplification. This package implements several specializations of GPA. In particular, it extends the original GPA algorithm by optimizing over a range of reference vectors, (as previously described by\[1]((https://doi.org/10.1016/j.optlaseng.2005.10.012)\] to achieve accurate characterization of larger distortions. This is especially useful when analysing (atomic) small angle moiré patterns.
+Geometric Phase Analysis enables the extraction of a _displacement field_ from a distorted lattice, by comparing to reference waves. As such, it is a spatial variant of lock-in amplification. This package implements several specializations of GPA. In particular, it extends the original GPA algorithm by optimizing over a range of reference vectors, (as previously described by\[[1]((https://doi.org/10.1016/j.optlaseng.2005.10.012)\] to achieve accurate characterization of larger distortions. This is especially useful when analysing (atomic) small angle moiré patterns.
 
 From the displacement field, it is possible to extract local properties of the underlying lattice, but also to correct for the distortion, a process known in STM as the Lawler-Fujita algorithm \[[2](https://doi.org/10.1038/nature09169)\].
 
