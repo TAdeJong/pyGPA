@@ -1,9 +1,10 @@
 import numpy as np
 import scipy.optimize as spo
 
-def periodic_average(X, period=2*np.pi):
-    Y = np.exp(1j * 2*np.pi / period * X)
-    Y = np.angle(Y.mean())
+def periodic_average(X, period=2*np.pi, weights=1., **kwargs):
+    """take the periodic average of X, weighted by weights."""
+    Y = weights * np.exp(1j * 2*np.pi / period * X)
+    Y = np.angle(Y.mean(**kwargs))
     return Y * period / (2*np.pi)
     
 def lfit_func(x, image, xx, yy):

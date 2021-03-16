@@ -7,7 +7,7 @@ from scipy.optimize import least_squares
 from moisan2011 import per
 from numba import njit, prange
 from skimage.feature import peak_local_max
-from .phase_unwrap import phase_unwrap, phase_unwrap_ref_prediff
+from .phase_unwrap import phase_unwrap, phase_unwrap_prediff
 #from .imagetools import gauss_homogenize2, fftplot, fftbounds trim_nans2
 from .imagetools import gauss_homogenize2, fftbounds, fftplot
 from .mathtools import fit_plane, periodic_average, wrapToPi
@@ -35,7 +35,8 @@ def vecGPA(image, kvecs, sigma=22):
     xx, yy = np.ogrid[0:image.shape[-2],0:image.shape[-1]]
     multiplier = np.exp(np.pi*2*1j*(xx*kvecs.T[0,:, None, None] + yy*kvecs.T[1,:, None, None]))
     X = np.fft.fft2(image*multiplier)
-    res = np.fft.ifft2(ndi.fourier_gaussian(X, sigma=sigma))
+    gaussian = ndi.fourier_gaussian(np.ones(image.shape[-2:]), sigma=sigma)
+    res = np.fft.ifft2(gaussian*X)
     return res
 
 
@@ -109,9 +110,9 @@ def reconstruct_u_inv_from_phases(kvecs, phases, weights, weighted_unwrap=True):
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
     if weighted_unwrap:
-        us = [phase_unwrap_ref_prediff(dudx[i], dudy[i], np.linalg.norm(weights, axis=0)) for i in range(2)]
+        us = [phase_unwrap_prediff(dudx[i], dudy[i], np.linalg.norm(weights, axis=0), kmax=10) for i in range(2)]
     else:
-        us = [phase_unwrap_ref_prediff(dudx[i], dudy[i]) for i in range(2)]
+        us = [phase_unwrap_prediff(dudx[i], dudy[i]) for i in range(2)]
     return np.array(us)
 
 
@@ -181,8 +182,9 @@ def ratio2angle(R):
     return np.rad2deg(2*np.arcsin(R/2))
 
 def f2angle(f, nmperpixel=1., a_0=0.246):
-    """For a given lin frequency f (==2*pi*|k|),
-    calculate the corresponding twist angle.
+    """For a given line frequency f (==2*pi*|k|),
+    calculate the corresponding twist angle
+    in degrees.
     """
     graphene_linespacing = 0.5*np.sqrt(3)*a_0
     linespacing = nmperpixel/f
@@ -528,7 +530,7 @@ def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
         }
     for wx in np.arange(kx-kw,kx+kw, kstep):
         wys = np.arange(ky-kw,ky+kw, kstep)
-        wpairs = da.stack(([wx]*len(wys), wys),axis=-1).rechunk({0:3})
+        wpairs = da.stack(([wx]*len(wys), wys),axis=-1).rechunk({0:1})
         sf = vecGPA(image, wpairs, sigma)
         for i,wy in enumerate(wys):
             t = np.abs(sf[i]) > np.abs(g['lockin'])
@@ -676,3 +678,30 @@ def props_from_J(J):
     moireangle = np.rad2deg(np.arctan2(angle[...,1,0], angle[...,0,0]))
     aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
     return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
+
+
+def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel):
+    """Calculate properties directly from phase gradients.
+    Using phase gradients calculated in wfr directly counters
+    artefacts at reference k-vector boundaries.
+    """
+    dks = calc_diff_from_isotropic(kvecs)
+    theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1), 
+                        nmperpixel=nmperpixel).mean()
+    xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[...,1],
+                                    (kvecs+dks)[...,0])) % 60).mean()
+    K = 2*np.pi*(kvecs + dks)
+    lxx, lyy = np.mgrid[:weights.shape[1], :weights.shape[2]]
+    iso_grads = np.stack([g - 2*np.pi*np.array([dk[0],dk[1]]) for g,dk in zip(grads, dks)])
+    iso_grads = wrapToPi(iso_grads)
+    #TODO: make a nice reshape for this call?
+    dudx = myweighed_lstsq(iso_grads[...,0], K, weights)
+    dudy = myweighed_lstsq(iso_grads[...,1], K, weights)
+    J = np.stack([dudx,dudy], axis=-1) / nmperpixel
+    J = np.moveaxis(J, 0, -2)
+    J = (np.eye(2) + J)
+    props = np.array(props_from_J(J))
+    print("theta:", theta_iso)
+    props[2] = props[2] * theta_iso
+    props[0] = props[0] + xi_iso
+    return props

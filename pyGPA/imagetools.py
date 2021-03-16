@@ -36,7 +36,7 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
     ax.set_aspect('equal')
     return im
 
-def indicate_k(pks, i, ax=None, inset=True, size="25%"):
+def indicate_k(pks, i, ax=None, inset=True, size="25%", origin='upper'):
     if not ax:
         ax=plt.gca()
     if inset:
@@ -45,6 +45,8 @@ def indicate_k(pks, i, ax=None, inset=True, size="25%"):
         for axis in ['top','bottom','left','right']:
             ax.spines[axis].set_color(f"None")
         ax.patch.set_alpha(0.0)
+    if origin == 'upper':
+        pks[:,1] *= -1
     ax.scatter(*np.concatenate([pks,-pks, [[0,0]]]).T, color='gray', s=10)
     ax.scatter(pks[i,0], pks[i,1], color='red', s=30)
     if isinstance(i, collections.Iterable):
@@ -115,3 +117,12 @@ def trim_nans2(image, return_lims=False):
             if c[1] > 0:
                 timage = timage[:, :-1]
                 ylims[1] -= 1
+
+
+def generate_mask(dataset, mask_value, r=20):
+    """Generate a boolean mask array covering everything that in 
+    any image in dataset contains mask_value. Perform an
+    erosion with radius r to create a safety margin."""
+    mask = ~np.any(dataset == mask_value, axis=0).compute()
+    mask = erosion(mask, selem=disk(r))
+    return mask

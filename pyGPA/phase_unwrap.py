@@ -200,7 +200,6 @@ def phase_unwrap(psi, weight=None, kmax=100):
         # check the stopping conditions
         if ((k >= kmax) or (np.linalg.norm(rk) < eps * normR0)):
             break;
-    #print(f"Terminated after {k} iterations")
     return phi
 
 def phase_unwrap_ref_prediff(dx, dy, weight=None, kmax=100):    
@@ -237,6 +236,63 @@ def phase_unwrap_ref_prediff(dx, dy, weight=None, kmax=100):
     phi = np.zeros((dx.shape[0], dy.shape[1]));
     while (~np.all(rk == 0.0)):
         zk = solvePoisson(rk);
+        k += 1
+        
+        # equivalent to (rk*zk).sum()
+        rkzksum = np.tensordot(rk, zk)
+        if (k == 1):
+            pk = zk
+        else:
+            betak = rkzksum  / rkzkprevsum
+            pk = zk + betak * pk;
+
+        # save the current value as the previous values
+        rkzkprevsum = rkzksum
+
+        # perform one scalar and two vectors update
+        Qpk = applyQ(pk, WWx, WWy)
+        alphak = rkzksum / np.tensordot(pk, Qpk)
+        phi +=  alphak * pk;
+        rk -=  alphak * Qpk;
+
+        # check the stopping conditions
+        if ((k >= kmax) or (np.linalg.norm(rk) < eps * normR0)):
+            break;
+    return phi
+
+
+def phase_unwrap_prediff(dx, dy, weight=None, kmax=100):    
+    """dx, dy sized NxM-1 and N-1xM, weights sized NxM"""
+    if weight is None:
+        WWx = np.ones_like(dx)
+        WWy = np.ones_like(dy)
+        WWdx = dx
+        WWdy = dy
+    else:
+        # multiply the vector b by weight square (W^T * W)
+        WW = weight**2
+
+        # See 3. Implementation issues: eq. 34 from Ghiglia et al.
+        # Improves number of needed iterations. Different from matlab implementation
+        WWx = np.minimum(WW[:,:-1], WW[:,1:])
+        WWy = np.minimum(WW[:-1,:], WW[1:,:])
+        WWdx = WWx * dx
+        WWdy = WWy * dy
+
+    # applying A^T to WWdx and WWdy is like obtaining rho in the unweighted case
+    WWdx2 = np.diff(WWdx, axis=1, prepend=0, append=0)
+    WWdy2 = np.diff(WWdy, axis=0, prepend=0, append=0)
+
+    rk = WWdx2 + WWdy2
+    normR0 = np.linalg.norm(rk);
+
+    # start the iteration
+    eps = 1e-9
+    k = 0
+    phi = np.zeros((dx.shape[0], dy.shape[1]))
+    scaling = precomp_Poissonscaling(rk)
+    while (~np.all(rk == 0.0)):
+        zk = solvePoisson_precomped(rk, scaling);
         k += 1
         
         # equivalent to (rk*zk).sum()
