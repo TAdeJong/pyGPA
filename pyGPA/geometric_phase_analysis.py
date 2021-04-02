@@ -462,6 +462,41 @@ def optwfr2(image, sigma, kx, ky, kw, kstep):
     return g
 
 
+def wfr2_only_lockin(image, sigma, kx, ky, kw, kstep):
+    """Optimized version of wfr2 calculating only the lockin signal.
+    Optimization in amount of computation done in each step by only
+    computing updated values."""
+    s = round(2*sigma)
+    wyy,wxx = np.mgrid[-s:s,-s:s]
+    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
+    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
+    w = w/np.sqrt((w**2).sum())
+    g = np.zeros_like(image, dtype=np.complex)
+    for wx in np.arange(kx-kw,kx+kw, kstep):
+        for wy in np.arange(ky-kw,ky+kw, kstep):
+            sf = optGPA(image, (wx, wy), sigma)
+            t = np.abs(sf) > np.abs(g)
+            g[t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
+    return g
+
+def wfr2_only_lockin_vec(image, sigma, kx, ky, kw, kstep):
+    """Vectorized version of wfr2_only_lockin. vectorize using dask"""
+    s = round(2*sigma)
+    wyy,wxx = np.mgrid[-s:s,-s:s]
+    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
+    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
+    w = w/np.sqrt((w**2).sum())
+    g = np.zeros_like(image, dtype=np.complex)
+    for wx in np.arange(kx-kw,kx+kw, kstep):
+        wys = np.arange(ky-kw,ky+kw, kstep)
+        wpairs = da.stack(([wx]*len(wys), wys),axis=-1).rechunk({0:1})
+        sf = vecGPA(image, wpairs, sigma).compute()
+        for i,wy in enumerate(wys):
+            t = np.abs(sf[i]) > np.abs(g)
+            g[t] = sf[i][t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
+    return g
+
+
 def wfr2_grad(image, sigma, kx, ky, kw, kstep):
     """Adapted version of wfr2. In addition to returning the 
     used k-vector and lock-in signal, return the gradient of the lock-in
@@ -646,27 +681,14 @@ def calc_props(U, nmperpixel):
     return props_from_J(J)
 
 def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
-    """Calculate properties from phases directly."""
+    """Calculate properties from phases directly.
+    Does not take into account base values from kvecs."""
     K = 2*np.pi*(kvecs)
     dbdx , dbdy = wrapToPi(np.stack(np.gradient(phases, axis=(1,2)))*2)/2/nmperpixel
     #dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
     J = -np.stack([dudx,dudy], axis=-1)
-    J = np.moveaxis(J, 0, -2)
-    J = (np.eye(2) + J)
-    return props_from_J(J)
-
-def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
-    """Calculate properties directly from phase gradients.
-    Using phase gradients calculated in wfr directly counters
-    artefacts at reference k-vector boundaries.
-    """
-    K = 2*np.pi*(kvecs)
-    #TODO: make a nice reshape for this call?
-    dudx = myweighed_lstsq(grads[...,0], K, weights)
-    dudy = myweighed_lstsq(grads[...,1], K, weights)
-    J = np.stack([dudx,dudy], axis=-1) / nmperpixel
     J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
     return props_from_J(J)
@@ -680,10 +702,17 @@ def props_from_J(J):
     return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
 
 
-def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel):
+def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     """Calculate properties directly from phase gradients.
     Using phase gradients calculated in wfr directly counters
     artefacts at reference k-vector boundaries.
+    Include calculation of base values from used kvecs.
+    Returns props, a tuple of arrays denoting properties
+    as described in https://doi.org/10.1103/PhysRevResearch.3.013153:
+    - local angle of the moire lattice w.r.t. horizontal (?)
+    - local angle of the anisotropy w.r.t. horizontal (?)
+    - local twist angle assuming a graphene lattice (TODO: make flexible)
+    - local anisotropy magnitude.
     """
     dks = calc_diff_from_isotropic(kvecs)
     theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1), 
@@ -692,7 +721,8 @@ def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel):
                                     (kvecs+dks)[...,0])) % 60).mean()
     K = 2*np.pi*(kvecs + dks)
     lxx, lyy = np.mgrid[:weights.shape[1], :weights.shape[2]]
-    iso_grads = np.stack([g - 2*np.pi*np.array([dk[0],dk[1]]) for g,dk in zip(grads, dks)])
+    iso_grads = np.stack([g - 2*np.pi*np.array([dk[0], dk[1]])
+                          for g, dk in zip(grads, dks)])
     iso_grads = wrapToPi(iso_grads)
     #TODO: make a nice reshape for this call?
     dudx = myweighed_lstsq(iso_grads[...,0], K, weights)
@@ -701,7 +731,40 @@ def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel):
     J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
     props = np.array(props_from_J(J))
-    print("theta:", theta_iso)
     props[2] = props[2] * theta_iso
     props[0] = props[0] + xi_iso
     return props
+
+def calc_eps_from_phasegradient(kvecs, grads, weights, nmperpixel):
+    """Calculate local lower bound of strain
+    assuming uniaxial strain of a graphene lattice
+    directly from phase gradients.
+    Using phase gradients calculated in wfr directly counters
+    artefacts at reference k-vector boundaries.
+    """
+    dks = calc_diff_from_isotropic(kvecs)
+    theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1),
+                        nmperpixel=nmperpixel).mean()
+    t = np.deg2rad(theta_iso)
+    J0 = np.array([[np.cos(t)-1, -np.sin(t)],
+                   [np.sin(t), np.cos(t)-1]])
+    xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[...,1],
+                                    (kvecs+dks)[...,0])) % 60).mean()
+    K = 2*np.pi*(kvecs + dks)
+    lxx, lyy = np.mgrid[:weights.shape[1], :weights.shape[2]]
+    iso_grads = np.stack([g - 2*np.pi*np.array([dk[0],dk[1]])
+                          for g,dk in zip(grads, dks)])
+    iso_grads = wrapToPi(iso_grads)
+    #TODO: make a nice reshape for this call?
+    dudx = myweighed_lstsq(iso_grads[...,0], K, weights)
+    dudy = myweighed_lstsq(iso_grads[...,1], K, weights)
+    J = np.stack([dudx, dudy], axis=-1) / nmperpixel
+    J = np.moveaxis(J, 0, -2)
+    # Should we use local J instead of J0 here?
+    J = J @ J0
+    J = (np.eye(2) + J)
+    props = np.array(props_from_J(J))
+    kappa = props[3]
+    delta = 0.16
+    epsilon = (kappa - 1) / (1+delta*kappa)
+    return epsilon

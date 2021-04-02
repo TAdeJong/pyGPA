@@ -138,6 +138,6 @@ dmypy.json
 # Cython debug symbols
 cython_debug/
 
-# Top level generated figures
+# Generated figures
 *.png
 *.pdf
