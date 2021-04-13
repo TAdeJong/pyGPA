@@ -3,6 +3,7 @@ import collections
 import numpy as np
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndi
+from skimage.morphology import selem, disk
 
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 

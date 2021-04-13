@@ -47,6 +47,12 @@ def fit_delta_k(phases):
 
 @njit()
 def myweighed_lstsq(b, K, w):
+    """Return the least squares solution
+    to the weighted equation `b @ x = K`
+    i.e. minimize ||w*K - w (b@x)||,
+    broadcasting over the last two dimensions
+    of b.
+    """
     res = np.empty((2,) + b.shape[1:])
     for i in prange(b.shape[1]):
         for j in prange(b.shape[2]):
@@ -149,9 +155,17 @@ def average_lattice_vector(ks, symmetry=6):
     r = np.linalg.norm(ks, axis=1).mean()
     return r * np.array([np.sin(dt), np.cos(dt)])
 
-def calc_diff_from_isotropic(ani_ks):
-    k_hex = average_lattice_vector(ani_ks)
-    ks_hex = np.array([rotate(k_hex, i*np.pi/3) for i in range(6)])
+def calc_diff_from_isotropic(ani_ks, symmetry=6):
+    """For a set of k-vectors representing an anisotropic
+    lattice, return a set of differences dks such that
+    ani_ks+dks correponds to a isotropic lattice, i.e. all
+    same length and angles 2*np.pi/symmetry apart.
+    Output angle corresponds to mean angle modulo
+    2*np.pi/symmetry, magnitude of output vectors the average
+    magnitude of ani_ks.
+    """
+    k_hex = average_lattice_vector(ani_ks, symmetry=symmetry)
+    ks_hex = np.array([rotate(k_hex, i * 2*np.pi/symmetry) for i in range(symmetry)])
     alldiffs =  ks_hex - ani_ks[:,None]
     argmins = np.linalg.norm(alldiffs, axis=-1).argmin(axis=1)
     return alldiffs[np.arange(len(ani_ks)), argmins]
@@ -647,124 +661,3 @@ def extract_displacement_field(image, kvecs):
     u = GPA.reconstruct_u_inv_from_phases(kvecs, phases, weights)
     return u
 
-def calc_props_eps(U, nmperpixel, Uinv=None, edge=0):
-    if Uinv is None:
-        Uinv = invert_u_overlap(uw, edge)
-    J = np.stack(np.gradient(-U, nmperpixel, axis=(1,2)), axis=1)
-    J = np.moveaxis(J,(0,1), (-2,-1))
-    J = (np.eye(2) + J)
-    u,s,v = np.linalg.svd(J)
-    angle = (u@v)
-    moireangle = phase_unwrap(np.arctan2(angle[...,1,0], angle[...,0,0])) #unwrap for proper interpolation
-    aniangle = phase_unwrap(2*np.arctan2(v[...,1,0], v[...,0,0])) #unwrap for proper interpolation, factor 2 for degeneracy
-    xxh, yyh = np.mgrid[-edge:U.shape[1]+edge, -edge:U.shape[2]+edge]
-    print(xxh.shape, Uinv.shape, moireangle.shape)
-    eps =  (s[...,0] - s[...,1])/(s[...,1] + s[...,0]*0.17)
-    alpha = s[...,1] * (1+eps)
-    props = [ndi.map_coordinates(p.T, [xxh+Uinv[0], yyh+Uinv[1]], mode='constant', cval=np.nan) 
-             for p in [moireangle, aniangle, alpha, eps]]
-    moireangle, aniangle, alpha, eps = props
-    moireangle = np.rad2deg(moireangle )
-    aniangle = np.rad2deg(aniangle )/2
-    return moireangle, aniangle, alpha, eps
-    
-def calc_props(U, nmperpixel):
-    """From the displacement field U, calculate the following properties:
-    -local angle w.r.t. absolute reference
-    -local direction of the anisotropy
-    -local unit cell scaling factor
-    -local anisotropy magnitude
-    """
-    J = np.stack(np.gradient(-U, nmperpixel, axis=(1,2)), axis=-1)
-    J = np.moveaxis(J, 0, -2)
-    J = (np.eye(2) + J)
-    return props_from_J(J)
-
-def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
-    """Calculate properties from phases directly.
-    Does not take into account base values from kvecs."""
-    K = 2*np.pi*(kvecs)
-    dbdx , dbdy = wrapToPi(np.stack(np.gradient(phases, axis=(1,2)))*2)/2/nmperpixel
-    #dbdy = wrapToPi(np.diff(phases, axis=1))
-    dudx = myweighed_lstsq(dbdx, K, weights)
-    dudy = myweighed_lstsq(dbdy, K, weights)
-    J = -np.stack([dudx,dudy], axis=-1)
-    J = np.moveaxis(J, 0, -2)
-    J = (np.eye(2) + J)
-    return props_from_J(J)
-
-
-def props_from_J(J):
-    u,s,v = np.linalg.svd(J)
-    angle = (u@v)
-    moireangle = np.rad2deg(np.arctan2(angle[...,1,0], angle[...,0,0]))
-    aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
-    return moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]
-
-
-def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
-    """Calculate properties directly from phase gradients.
-    Using phase gradients calculated in wfr directly counters
-    artefacts at reference k-vector boundaries.
-    Include calculation of base values from used kvecs.
-    Returns props, a tuple of arrays denoting properties
-    as described in https://doi.org/10.1103/PhysRevResearch.3.013153:
-    - local angle of the moire lattice w.r.t. horizontal (?)
-    - local angle of the anisotropy w.r.t. horizontal (?)
-    - local twist angle assuming a graphene lattice (TODO: make flexible)
-    - local anisotropy magnitude.
-    """
-    dks = calc_diff_from_isotropic(kvecs)
-    theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1), 
-                        nmperpixel=nmperpixel).mean()
-    xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[...,1],
-                                    (kvecs+dks)[...,0])) % 60).mean()
-    K = 2*np.pi*(kvecs + dks)
-    lxx, lyy = np.mgrid[:weights.shape[1], :weights.shape[2]]
-    iso_grads = np.stack([g - 2*np.pi*np.array([dk[0], dk[1]])
-                          for g, dk in zip(grads, dks)])
-    iso_grads = wrapToPi(iso_grads)
-    #TODO: make a nice reshape for this call?
-    dudx = myweighed_lstsq(iso_grads[...,0], K, weights)
-    dudy = myweighed_lstsq(iso_grads[...,1], K, weights)
-    J = np.stack([dudx,dudy], axis=-1) / nmperpixel
-    J = np.moveaxis(J, 0, -2)
-    J = (np.eye(2) + J)
-    props = np.array(props_from_J(J))
-    props[2] = props[2] * theta_iso
-    props[0] = props[0] + xi_iso
-    return props
-
-def calc_eps_from_phasegradient(kvecs, grads, weights, nmperpixel):
-    """Calculate local lower bound of strain
-    assuming uniaxial strain of a graphene lattice
-    directly from phase gradients.
-    Using phase gradients calculated in wfr directly counters
-    artefacts at reference k-vector boundaries.
-    """
-    dks = calc_diff_from_isotropic(kvecs)
-    theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1),
-                        nmperpixel=nmperpixel).mean()
-    t = np.deg2rad(theta_iso)
-    J0 = np.array([[np.cos(t)-1, -np.sin(t)],
-                   [np.sin(t), np.cos(t)-1]])
-    xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[...,1],
-                                    (kvecs+dks)[...,0])) % 60).mean()
-    K = 2*np.pi*(kvecs + dks)
-    lxx, lyy = np.mgrid[:weights.shape[1], :weights.shape[2]]
-    iso_grads = np.stack([g - 2*np.pi*np.array([dk[0],dk[1]])
-                          for g,dk in zip(grads, dks)])
-    iso_grads = wrapToPi(iso_grads)
-    #TODO: make a nice reshape for this call?
-    dudx = myweighed_lstsq(iso_grads[...,0], K, weights)
-    dudy = myweighed_lstsq(iso_grads[...,1], K, weights)
-    J = np.stack([dudx, dudy], axis=-1) / nmperpixel
-    J = np.moveaxis(J, 0, -2)
-    # Should we use local J instead of J0 here?
-    J = J @ J0
-    J = (np.eye(2) + J)
-    props = np.array(props_from_J(J))
-    kappa = props[3]
-    delta = 0.16
-    epsilon = (kappa - 1) / (1+delta*kappa)
-    return epsilon
