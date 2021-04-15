@@ -107,43 +107,22 @@ def calc_eps_from_phasegradient(kvecs, grads, weights, nmperpixel):
     Using phase gradients calculated in wfr directly counters
     artefacts at reference k-vector boundaries.
     """
-    dks = calc_diff_from_isotropic(kvecs)
-    theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1),
-                        nmperpixel=nmperpixel).mean()
-    t = np.deg2rad(theta_iso)
-    J0 = np.array([[np.cos(t)-1, -np.sin(t)],
-                   [np.sin(t), np.cos(t)-1]])
-    xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[...,1],
-                                    (kvecs+dks)[...,0])) % 60).mean()
-    K = 2*np.pi*(kvecs + dks)
-    iso_grads = np.stack([g - 2*np.pi*np.array([dk[0],dk[1]])
-                          for g,dk in zip(grads, dks)])
-    iso_grads = wrapToPi(iso_grads)
-    #TODO: make a nice reshape for this call?
-    dudx = myweighed_lstsq(iso_grads[...,0], K, weights)
-    dudy = myweighed_lstsq(iso_grads[...,1], K, weights)
-    J = np.stack([dudx, dudy], axis=-1) / nmperpixel
-    J = np.moveaxis(J, 0, -2)
-    # Should we use local J instead of J0 here?
-    J_diff = J @ J0
-    J_diff = (np.eye(2) + J_diff)
+    J_diff = J_diff_from_phasegradient(kvecs, grads, weights, nmperpixel)
     props = np.array(props_from_J(J_diff))
     kappa = props[3]
     delta = 0.16
     epsilon = (kappa - 1) / (1 + delta*kappa)
     return epsilon
 
-def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel):
-    """Calculate properties directly from phase gradients.
+
+def J_diff_from_phasegradient(kvecs, grads, weights, nmperpixel):
+    """Calculate J_diff directly from phase gradients.
     Using phase gradients calculated in wfr directly counters
     artefacts at reference k-vector boundaries.
     Include calculation of base values from used kvecs.
-    Returns props, assuming uniaxial strain, angles in degrees.
-    - local angle of the moire lattice w.r.t. horizontal (?)
-    - local angle of the anisotropy w.r.t. horizontal (?)
-    - local twist angle assuming graphene lattices
-      of which one is strained by uniaxial strain (TODO: make flexible)
-    - local strain epsilon
+    Returns J_diff, the dislocation field gradient of the
+    difference of both layers directly, based on the
+    average twist angle.
     """
     dks = calc_diff_from_isotropic(kvecs)
     theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1),
@@ -165,6 +144,41 @@ def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel):
     # Should we use local J instead of J0 here?
     J_diff = J @ J0
     J_diff = (np.eye(2) + J_diff)
+    return J_diff
+
+def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel):
+    """Calculate properties directly from phase gradients.
+    Using phase gradients calculated in wfr directly counters
+    artefacts at reference k-vector boundaries.
+    Include calculation of base values from used kvecs.
+    Returns props, assuming uniaxial strain, angles in degrees.
+    - local angle of the moire lattice w.r.t. horizontal (?)
+    - local angle of the anisotropy w.r.t. horizontal (?)
+    - local twist angle assuming graphene lattices
+      of which one is strained by uniaxial strain (TODO: make flexible)
+    - local strain epsilon
+    """
+#     dks = calc_diff_from_isotropic(kvecs)
+#     theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1),
+#                         nmperpixel=nmperpixel).mean()
+#     t = np.deg2rad(theta_iso)
+#     J0 = np.array([[np.cos(t)-1, -np.sin(t)],
+#                    [np.sin(t), np.cos(t)-1]])
+#     xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[...,1],
+#                                     (kvecs+dks)[...,0])) % 60).mean()
+#     K = 2*np.pi*(kvecs + dks)
+#     iso_grads = np.stack([g - 2*np.pi*dk
+#                           for g,dk in zip(grads, dks)])
+#     iso_grads = wrapToPi(iso_grads)
+#     #TODO: make a nice reshape for this call?
+#     dudx = myweighed_lstsq(iso_grads[...,0], K, weights)
+#     dudy = myweighed_lstsq(iso_grads[...,1], K, weights)
+#     J = np.stack([dudx, dudy], axis=-1) / nmperpixel
+#     J = np.moveaxis(J, 0, -2)
+#     # Should we use local J instead of J0 here?
+#     J_diff = J @ J0
+#     J_diff = (np.eye(2) + J_diff)
+    J_diff = J_diff_from_phasegradient(kvecs, grads, weights, nmperpixel)
     props = np.array(uniaxial_props_from_J(J_diff))
     props[2] = props[2] * theta_iso
     props[0] = props[0] + xi_iso
@@ -218,3 +232,54 @@ def calc_props_from_kvecs(kvecs, nmperpixel, decomposition='uniaxial'):
     props[2] = props[2] * theta_iso
     props[0] = props[0] + xi_iso
     return props
+
+
+def calc_abcd(J, delta=0.16):
+    """decompose J into symmetric and antisymmetric 
+    parts in both directions. Broadcasts over the first
+    dimensions of J (assumes J = (NxMx)2x2)
+    """
+    a = (J[...,0,0] + J[...,1,1]) / (1 - delta)
+    b = (J[...,0,1] + J[...,1,0]) / (1 + delta)
+    c = (J[...,1,0] - J[...,0,1]) / (1 - delta)
+    d = (J[...,1,1] - J[...,0,0]) / (1 + delta)
+    return a,b,c,d
+
+def double_strain_decomp(J, delta=0.16):
+    a,b,c,d = calc_abcd(J, delta=delta)
+    bd = b*b + d*d
+    alpha = 4 / (1-delta)
+    #taylored in 1/alpha
+    #c0 = bd * (1+ c*c*(1/alpha**2 - 2/alpha**3))
+    #c1 = c*c / (alpha**2) * (1 + 2*np.sqrt(bd)/alpha)
+    # Dropping  terms smaller than eps^2/alpha
+    ca = c*c/(alpha*alpha)
+    #c0 = bd/(1-ca)
+    #c1 = ca / (1-ca)
+    # Renewed expansion 
+    c0 = bd * (1 + ca*(1 - 2*np.sqrt(bd) / alpha))
+    c1 = ca * (2*np.sqrt(bd) / alpha - 1)
+    btemp = bd + a*a*(1 - c1)
+    epsminus = np.sqrt(0.5*(btemp + np.sqrt(btemp**2 + 4*a*a*c0)))
+    assert np.all(epsminus >= 0.)
+    epsplussquare = c0 + c1*epsminus*epsminus
+    
+    #phi = np.arccos(a / epsminus)
+    #Two ways to compute epsplus, for debug purposes
+    #assert np.all(np.sin(phi) >= 0)
+    #epsplus = c / np.sin(phi) - alpha
+    #assert np.all(epsplus >= 0)
+    print("Boe!")
+    
+    assert np.all(epsplussquare >= 0)
+    
+    epsplus = np.sqrt(epsplussquare)
+    phi = np.arcsin(c/(alpha+epsplus))
+    
+    epsr = np.tan(phi) * epsminus / epsplus
+    #theta = 0.5*np.arctan((b - d*epsr) / (b*epsr + d))
+    # I don't know why this gives a seemingly correct answer?
+    theta = 0.5*np.arctan2( (b*epsr + d), (b - d*epsr))
+    epsa = 0.5*(epsplus + epsminus)
+    epsb = 0.5*(epsplus - epsminus)
+    return theta, phi, epsa, epsb, epsplus, epsplussquare
