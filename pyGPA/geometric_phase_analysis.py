@@ -1,18 +1,20 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import os
-import dask.array as da
+from itertools import combinations
 import scipy.ndimage as ndi
-from scipy.optimize import least_squares
+import dask.array as da
+
 from moisan2011 import per
 from numba import njit, prange
 from skimage.feature import peak_local_max
-from .phase_unwrap import phase_unwrap, phase_unwrap_prediff
-#from .imagetools import gauss_homogenize2, fftplot, fftbounds trim_nans2
-from .imagetools import gauss_homogenize2, fftbounds, fftplot
-from .mathtools import fit_plane, periodic_average, wrapToPi
-from itertools import combinations
+
+
 from latticegen.transformations import rotate
+from .phase_unwrap import phase_unwrap, phase_unwrap_prediff
+from .imagetools import gauss_homogenize2, fftbounds, fftplot, trim_nans2
+from .mathtools import fit_plane, periodic_average, wrapToPi
+
+
 
 
 def GPA(image, kx, ky, sigma=22):
@@ -22,12 +24,14 @@ def GPA(image, kx, ky, sigma=22):
     res = np.fft.ifft2(ndi.fourier_gaussian(X, sigma=sigma))
     return res
 
+
 def optGPA(image, kvec, sigma=22):
     xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
     multiplier = np.exp(np.pi*2*1j*(xx*kvec[0] + yy*kvec[1]))
     X = np.fft.fft2(image*multiplier)
     res = np.fft.ifft2(ndi.fourier_gaussian(X, sigma=sigma))
     return res
+
 
 def vecGPA(image, kvecs, sigma=22):
     """Vectorized GPA, taking a list of kvecs"""
@@ -40,10 +44,10 @@ def vecGPA(image, kvecs, sigma=22):
     return res
 
 
-
 def fit_delta_k(phases):
     x_opt = fit_plane(phases)
     return x_opt[:2]/(2*np.pi)
+
 
 @njit()
 def myweighed_lstsq(b, K, w):
@@ -88,8 +92,9 @@ def iterate_GPA(image, kvecs, sigma, edge=5, iters=3, kmax_iter=25, kmax=200, ve
     return prs, w, corr
 
 def reconstruct_u_inv(kvecs, b, weights=None, use_only_ks=None):
-    """reconstruct the distortion field u from the phase shift
-    along the kvecs."""
+    """Reconstruct the distortion field u from the phase shift
+    along the kvecs.
+    """
     K = 2*np.pi*(kvecs)
     b = b - b.mean(axis=(1,2), keepdims=True)
     if use_only_ks is None:
@@ -126,7 +131,7 @@ def invert_u(us, iters=35, edge=0, mode='nearest'):
     """Find the inverse of the displacement u such that:
     \vec u_it(\vec r+\vec us(\vec r)) = \vec r
     i.e.:
-    If an Image has been distorted by sampling at \vec r+ \vec us(\vec r),
+    If an image has been distorted by sampling at \vec r+ \vec us(\vec r),
     sampling that image at u_it will sample the original image.
     """
     xx, yy = np.mgrid[:us.shape[1], :us.shape[2]]
@@ -151,7 +156,7 @@ def invert_u_overlap(us, iters=35, edge=0, mode='nearest'):
 
 
 def average_lattice_vector(ks, symmetry=6):
-    dt = periodic_average(np.arctan2(*ks.T), period=2*np.pi/symmetry)
+    dt = periodic_average(np.arctan2(*ks.T[::-1]), period=2*np.pi/symmetry)
     r = np.linalg.norm(ks, axis=1).mean()
     return r * np.array([np.sin(dt), np.cos(dt)])
 
@@ -199,10 +204,17 @@ def f2angle(f, nmperpixel=1., a_0=0.246):
     """For a given line frequency f (==2*pi*|k|),
     calculate the corresponding twist angle
     in degrees.
+    
+    Parameters
+    f : float
+    nmperpixel : float, default=1
+    a_0 : float, default=0.246
+        Lattice constant of underlying lattice in nm
+        default corresponds to graphene
     """
-    graphene_linespacing = 0.5*np.sqrt(3)*a_0
+    ref_linespacing = 0.5*np.sqrt(3)*a_0
     linespacing = nmperpixel/f
-    return ratio2angle(graphene_linespacing / linespacing)
+    return ratio2angle(ref_linespacing / linespacing)
 
 def remove_negative_duplicates(ks):
     """For a list of length 2 vectors ks (or Nx2 array),
@@ -612,8 +624,8 @@ def wfr4(image, sigma, klist, kref, dk):
         t = np.abs(sf) > np.abs(g['lockin'])
         t = t & (np.linalg.norm(g['w'] - np.array([wx,wy]),axis=-1) < 2*np.sqrt(2)*dk)
         g['lockin'][t] = sf[t]
-        g['w'][t] = np.array([wx,wy])
-    g['w'] = np.moveaxis(g['w'],-1,0)
+        g['w'][t] = np.array([wx, wy])
+    g['w'] = np.moveaxis(g['w'], -1, 0)
     return g
 
 
@@ -624,39 +636,39 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
     to any other kvec in pks.
     Used in conjunction with wfr3 or wfr4
     """
-    doubleks = np.concatenate([pks,-pks])
+    doubleks = np.concatenate([pks, -pks])
     kmax = np.linalg.norm(pks, axis=1).max()*kmax
     kmin = np.linalg.norm(pks, axis=1).max()*kmin
     if dk is None:
         dk = np.linalg.norm(pks, axis=1).mean()/10
-    kk = np.mgrid[-kmax:kmax:0.005,-kmax:kmax:0.005]
-    dists = ((np.moveaxis(kk[...,None],0,-1)-doubleks)**2).sum(axis=-1)
+    kk = np.mgrid[-kmax:kmax:0.005, -kmax:kmax:0.005]
+    dists = ((np.moveaxis(kk[...,None], 0, -1) - doubleks)**2).sum(axis=-1)
     r = (kk**2).sum(axis=0)
     kmask0 = (r < kmax**2) & (r > kmin**2)
     klists = []
     for i,pk in enumerate(pks):
         kmask = kmask0 & (dists.min(axis=-1) == dists[...,i])
-        klist = kk[:,kmask].T
+        klist = kk[:, kmask].T
         if sort_list:
-            ampl = np.linalg.norm(klist-pks[i], axis=1)
+            ampl = np.linalg.norm(klist - pks[i], axis=1)
             klist = klist[np.argsort(ampl.reshape((-1)))]
         klists.append(klist)
     return klists
 
 def extract_displacement_field(image, kvecs):
-    """Top level convenience function"""
+    """Top level convenience function, WIP"""
     gs = []
     kw = np.linalg.norm(kvecs,axis=1).mean()/2.5
     sigma = 10
     kstep = kw/5
     for pk in kvecs:
-        g = wfr2_grad_opt(deformed-deformed.mean(), sigma,
-                          pk[0]*1., pk[1]*1., kw=kw, kstep=kstep)
+        g = wfr2_grad_opt(image - image.mean(), sigma,
+                          pk[0], pk[1], kw=kw, kstep=kstep)
         gs.append(g)
     phases = np.stack([np.angle(g['lockin']) for g in gs])
     mask = np.zeros_like(image, dtype=bool)
     dr = 2*sigma
-    mask[dr:-dr,dr:-dr] = 1.
+    mask[dr:-dr, dr:-dr] = 1.
     weights = np.stack([np.abs(g['lockin']) for g in gs]) * (mask+1e-6)
     u = GPA.reconstruct_u_inv_from_phases(kvecs, phases, weights)
     return u

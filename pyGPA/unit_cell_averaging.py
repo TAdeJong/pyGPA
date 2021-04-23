@@ -1,7 +1,7 @@
 """Unit cell averaging of images."""
 import numpy as np
 import scipy.ndimage as ndi
-from numba import njit, prange
+from numba import njit
 
 
 def forward_transform(vecs, ks):
@@ -97,7 +97,7 @@ def unit_cell_average(image, ks, u=None, z=1):
                             res[R_int[0]+li, R_int[1]+lj] += image[i, j] * overlap[li, lj]
                             weight[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
         return res/weight
-    
+
     return _unit_cell_average(image, u, z)
 
 
@@ -107,23 +107,23 @@ def add_to_position(value, R, res, weight):
     R_int = R_floor.astype(np.int32)
     for li in range(overlap.shape[0]):
         for lj in range(overlap.shape[1]):
-            res[R_int[0]+li, R_int[1]+lj] += image[i, j] * overlap[li, lj]
+            res[R_int[0]+li, R_int[1]+lj] += value * overlap[li, lj]
             weight[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
 
-def overlap_modulo(R_floor):
-    corners = np.array([[0., 0.],
-                        [0., 1.],
-                        [1., 0.],
-                        [1., 1.]])
-    neighbor_pos = nb_cart_in_uc(R_floor + corners) + rmin
+# def overlap_modulo(R_floor):
+#     corners = np.array([[0., 0.],
+#                         [0., 1.],
+#                         [1., 0.],
+#                         [1., 1.]])
+#     neighbor_pos = nb_cart_in_uc(R_floor + corners) + rmin
     
-    handled = np.zeros(4, dtype=np.bool)
-    for i in len(neighbor_pos):
-        if not handled[i]:
-            new_pos = neigbor_pos[i] - corners[i]
-            add_to_position(image[i, j], newpos, res, weight)
-            dists = np.linalg.norm(neighbor_pos - newpos, axis=-1)
-            handled[dists <= np.sqrt(2)] = True
+#     handled = np.zeros(4, dtype=np.bool)
+#     for i in len(neighbor_pos):
+#         if not handled[i]:
+#             new_pos = neigbor_pos[i] - corners[i]
+#             add_to_position(image[i, j], newpos, res, weight)
+#             dists = np.linalg.norm(neighbor_pos - newpos, axis=-1)
+#             handled[dists <= np.sqrt(2)] = True
             
         
 
