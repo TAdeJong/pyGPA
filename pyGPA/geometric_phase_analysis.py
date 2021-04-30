@@ -18,27 +18,72 @@ from .mathtools import fit_plane, periodic_average, wrapToPi
 
 
 def GPA(image, kx, ky, sigma=22):
-    xx, yy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
-    multiplier = np.exp(np.pi*2*1j*(xx*kx + yy*ky))
-    X = np.fft.fft2(image*multiplier)
+    """Perform spatial lock-in on an image
+
+    Parameters
+    ----------
+    image : np.array
+        2D image input image
+    kx : float
+        x-component of the reference k-vector
+    ky : float
+        y-component of the reference k-vector
+    sigma : float, default=22
+        standard deviation/ width of the Gaussian window
+
+    Returns
+    -------
+    res : np.array, dtype complex
+        Complex lock-in signal. Same shape as `image`.
+    """
+    xx, yy = np.meshgrid(np.arange(image.shape[0]),
+                         np.arange(image.shape[1]),
+                         indexing='ij')
+    multiplier = np.exp(np.pi*2j * (xx*kx + yy*ky))
+    X = np.fft.fft2(image * multiplier)
     res = np.fft.ifft2(ndi.fourier_gaussian(X, sigma=sigma))
     return res
 
 
 def optGPA(image, kvec, sigma=22):
-    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
-    multiplier = np.exp(np.pi*2*1j*(xx*kvec[0] + yy*kvec[1]))
-    X = np.fft.fft2(image*multiplier)
+    """Perform spatial lock-in on an image
+
+    Slightly optimized version of `GPA()`.
+    Mind the different call signature w.r.t. reference vector.
+
+    Parameters
+    ----------
+    image : np.array
+        2D image input image
+    kvec : 2-tuple or array of float
+        components of the reference k-vector
+    sigma : float, default=22
+        standard deviation/ width of the Gaussian window
+
+    Returns
+    -------
+    res : np.array, dtype complex
+        Complex lock-in signal. Same shape as `image`.
+
+    Notes
+    -----
+    This function should be a prime candidate to speed up using cupy.
+    """
+    xx, yy = np.ogrid[0:image.shape[0], 0:image.shape[1]]
+    multiplier = np.exp(np.pi*2j * (xx*kvec[0] + yy*kvec[1]))
+    X = np.fft.fft2(image * multiplier)
     res = np.fft.ifft2(ndi.fourier_gaussian(X, sigma=sigma))
     return res
 
 
 def vecGPA(image, kvecs, sigma=22):
-    """Vectorized GPA, taking a list of kvecs"""
+    """Vectorized GPA, taking a list of kvecs and/or images"""
     #TODO: maybe better make a gufunc out of this?
-    xx, yy = np.ogrid[0:image.shape[-2],0:image.shape[-1]]
-    multiplier = np.exp(np.pi*2*1j*(xx*kvecs.T[0,:, None, None] + yy*kvecs.T[1,:, None, None]))
-    X = np.fft.fft2(image*multiplier)
+    xx, yy = np.ogrid[0:image.shape[-2], 0:image.shape[-1]]
+    multiplier = np.exp(np.pi*2j * (xx*kvecs.T[0, :, None, None] 
+                                    + yy*kvecs.T[1, :, None, None])
+                       )
+    X = np.fft.fft2(image * multiplier)
     gaussian = ndi.fourier_gaussian(np.ones(image.shape[-2:]), sigma=sigma)
     res = np.fft.ifft2(gaussian*X)
     return res
@@ -46,7 +91,7 @@ def vecGPA(image, kvecs, sigma=22):
 
 def fit_delta_k(phases):
     x_opt = fit_plane(phases)
-    return x_opt[:2]/(2*np.pi)
+    return x_opt[:2] / (2*np.pi)
 
 
 @njit()
@@ -56,12 +101,14 @@ def myweighed_lstsq(b, K, w):
     i.e. minimize ||w*K - w (b@x)||,
     broadcasting over the last two dimensions
     of b.
+    
+    numba jitted to make it fast.
     """
     res = np.empty((2,) + b.shape[1:])
     for i in prange(b.shape[1]):
         for j in prange(b.shape[2]):
             wloc = w[:, i, j]
-            temp = np.linalg.lstsq((wloc * K.T).T, wloc*b[:,i,j])[0]
+            temp = np.linalg.lstsq((wloc * K.T).T, wloc * b[:, i, j])[0]
             res[:, i, j] = temp
     return res
 
@@ -92,8 +139,28 @@ def iterate_GPA(image, kvecs, sigma, edge=5, iters=3, kmax_iter=25, kmax=200, ve
     return prs, w, corr
 
 def reconstruct_u_inv(kvecs, b, weights=None, use_only_ks=None):
-    """Reconstruct the distortion field u from the phase shift
+    """Reconstruct the distortion field `u` from the phase shift
     along the kvecs.
+    
+    Parameters
+    ----------
+    kvecs : np.array, (d,2)
+        reference k-vectors to which
+        `phases` correspond.
+    b : np.array, (d,N,M)
+        unwrapped GPA phases, i.e. with a globally consistent phase.
+    weights : None or np.array, (d,N,M)
+        weights to use for the weighted least squares reconstruction
+        of the displacement gradient vector.
+        Canonically the magnitude of the lock-in signals.
+    use_only_ks : 2-tuple of int, default=None
+        list of 2 indices of `kvecs` to use to directly, i.e. without 
+        weighing, reconstruct `us.
+        
+    Returns
+    -------
+    us : np.array, (2,N,M)
+        The reconstructed displacement field.
     """
     K = 2*np.pi*(kvecs)
     b = b - b.mean(axis=(1,2), keepdims=True)
@@ -110,12 +177,34 @@ def reconstruct_u_inv(kvecs, b, weights=None, use_only_ks=None):
     return us
 
 def reconstruct_u_inv_from_phases(kvecs, phases, weights, weighted_unwrap=True):
-    """Reconstruct the distortion field u from the wrapped phase shifts
-    along the kvecs. By first projecting to cartesian vectors and only
+    """Reconstruct the displacement field `us` from the wrapped phase shifts
+    along the kvecs, by first projecting to cartesian vectors and only
     afterwards phase unwrapping.
+    
+    This method somewhat mediates troubles with 2D phase unwrapping,
+    by inputting all information weighted.
+    
+    Parameters
+    ----------
+    kvecs : np.array, (d,2)
+        reference k-vectors to which
+        `phases` correspond.
+    phases : np.array, (d,N,M)
+        GPA phases, possibly still phase wrapped
+    weights : np.array, (d,N,M)
+        weights to use for the weighted least squares reconstruction
+        of the displacement gradient vector and optionally for the
+        phase unwrap to reconstruct the distortion field itself.
+        Canonically the magnitude of the lock-in signals.
+    weighted_unwrap : bool, default=True
+        Whether to use `weights` for the phase unwrappping.
+        
+    Returns
+    -------
+    us : np.array, (2,N,M)
+        The reconstructed displacement field.
     """
     K = 2*np.pi*(kvecs)
-    #b = b - b.mean(axis=(1,2), keepdims=True)
     dbdx = wrapToPi(np.diff(phases, axis=2))
     dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
@@ -143,9 +232,12 @@ def invert_u(us, iters=35, edge=0, mode='nearest'):
 def invert_u_overlap(us, iters=35, edge=0, mode='nearest'):
     """Find the inverse of the displacement u such that:
     \vec u_it(\vec r+\vec us(\vec r)) = \vec r
-    i.e.:
-    If an Image has been distorted by sampling at \vec r+ \vec us(\vec r),
+    
+    That is:
+    If an image has been distorted by sampling at \vec r+ \vec us(\vec r),
     sampling that image at u_it will sample the original image.
+    This variant of `invert_u` uses an overlap of width `edge`
+    to catch as much of the original image as possible.
     """
     xx, yy = np.mgrid[-edge:us.shape[1]+edge, -edge:us.shape[2]+edge]
     u_it = [ndi.map_coordinates(u, [xx,yy], mode=mode) for u in us]
@@ -159,6 +251,7 @@ def average_lattice_vector(ks, symmetry=6):
     dt = periodic_average(np.arctan2(*ks.T[::-1]), period=2*np.pi/symmetry)
     r = np.linalg.norm(ks, axis=1).mean()
     return r * np.array([np.sin(dt), np.cos(dt)])
+
 
 def calc_diff_from_isotropic(ani_ks, symmetry=6):
     """For a set of k-vectors representing an anisotropic
@@ -177,7 +270,7 @@ def calc_diff_from_isotropic(ani_ks, symmetry=6):
 
 
 def prep_image(original, vlims=None, edges=None):
-    """prep image for usage in GPA"""
+    """DEPRECATED: prep image for usage in GPA"""
     if vlims is None:
         vlims = np.quantile(original, [0.08, 0.999])
     if edges is not None:
@@ -190,7 +283,7 @@ def prep_image(original, vlims=None, edges=None):
 
     mask2 = ndi.gaussian_filter(deformed1, sigma=5) > 0.995
     deformed2 = gauss_homogenize2(original, mask2, sigma=65)
-    deformed = deformed2-deformed2.mean()
+    deformed = deformed2 - deformed2.mean()
     xx, yy = np.meshgrid(np.arange(original.shape[0]), np.arange(original.shape[1]), indexing='ij')
     return deformed, xx, yy
 
@@ -206,6 +299,7 @@ def f2angle(f, nmperpixel=1., a_0=0.246):
     in degrees.
     
     Parameters
+    ----------
     f : float
     nmperpixel : float, default=1
     a_0 : float, default=0.246
@@ -240,15 +334,43 @@ def _decrease_threshold(t):
             t = t/2
     return t
 
-def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200), sigma=1.5, NMPERPIXEL=1.):
+def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(2, 200), 
+                       sigma=1, NMPERPIXEL=1., DoG=True):
     """Attempt to extract primary k-vectors from an image from a smoothed
-    version of the Fourier transform.
+    version of the Fourier transform. 
+    
+    Recursively adapts parameters until a satisfactory solution is found.
+    
+    Parameters
+    ----------
+    image : ndarray
+    plot : bool
+        Whether to plot a debug plot containing the FFT, the detected peaks
+        and the selected peaks. Also prints more debug info
+    threshold : float, default: 0.7
+        relative threshold for peak height.
+    pix_norm_range : 2-tuple of int, default: (2, 200)
+    sigma : float, default = 1
+        width of the gaussian smoothing of the FFT before peaks are extracted.
+    NMPERPIXEL : float
+    DoG : bool
+        (Difference of Gaussians)
+        Whether to divide the smoothed FFT by a sigma=50 smoothed version
+        
+    Returns
+    -------
+    primary_ks : ndarray (N, 2)
+        list of main k-vectors
+    all_ks : ndarray (N+M, 2)
+        list of all found k-vectors
     """
     image = image - image.mean()
     pd, _ = per(image, inverse_dft=False)
     fftim = np.abs(np.fft.fftshift(pd))
     kxs, kys = [fftbounds(n) for n in fftim.shape]
-    smooth = ndi.filters.gaussian_filter(fftim, sigma=sigma) - ndi.filters.gaussian_filter(fftim, sigma=50)
+    smooth = ndi.filters.gaussian_filter(fftim, sigma=sigma)
+    if DoG:
+         smooth -= ndi.filters.gaussian_filter(fftim, sigma=50)
 
     center = np.array(smooth.shape)//2
     cindices = peak_local_max(smooth, threshold_rel=threshold)#min_distance=5, threshold_rel=np.quantile(smooth, threshold))
@@ -274,15 +396,15 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
                 newparams = False
         else:
             coordsminlength = np.linalg.norm(coords, axis=1).min()
-            print(f"cminlength {coordsminlength:.2f}, s {sigma:.1f}")
+            # print(f"cminlength {coordsminlength:.2f}, s {sigma:.1f}")
             if coordsminlength < 5 * sigma:
                 sigma = coordsminlength / 6
-                print(f"cminlength {coordsminlength:.2f}")
+                # print(f"cminlength {coordsminlength:.2f}")
             elif threshold > 0.2*np.max([smooth[cindex[0],cindex[1]] for cindex in cindices]):
                 threshold = 0.2*np.max([smooth[cindex[0],cindex[1]] for cindex in cindices])
             elif threshold > _decrease_threshold(threshold):
                     threshold = _decrease_threshold(threshold)
-                    print(f"new thres: {threshold:.2f}")
+                    # print(f"new thres: {threshold:.2f}")
             else:
                 print("Can't find enough ks!")
                 newparams = False
@@ -300,22 +422,25 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
     
     if len(primary_ks) != 3:
         if len(primary_ks) > 3:
-            print(f"Too many primary ks {len(primary_ks)}")
+            # print(f"Too many primary ks {len(primary_ks)}")
             primary_ks = select_closest_to_triangle(all_ks)
         elif len(all_ks) > 6:
             #print("all_ks > 3, selecting 3 with most similar length")
             #primary_ks = all_ks[np.argpartition(np.abs(knorms-knorms.mean()), 3)[:3]]
-            print("all_ks > 3 but not enough primary_ks, selecting closest to triangle")
+            if plot:
+                print("all_ks > 3 but not enough primary_ks, selecting closest to triangle")
             primary_ks = select_closest_to_triangle(all_ks)
-        elif threshold > _decrease_threshold(threshold) and not newparams: 
-            print(f"pks<3, all_ks < 6, decreasing threshold {threshold:.3f}")
+        elif threshold > _decrease_threshold(threshold) and not newparams:
+            if plot:
+                print(f"pks<3, all_ks < 6, decreasing threshold {threshold:.3f}")
             threshold = _decrease_threshold(threshold)
             primary_ks, all_ks = extract_primary_ks(image, plot=False,
                                                     threshold=threshold,
                                                     sigma=sigma,
                                                     pix_norm_range=pix_norm_range)
         else:
-            print("pks < aks=3", len(all_ks), len(primary_ks))
+            if plot:
+                print("pks < aks=3", len(all_ks), len(primary_ks))
             primary_ks = all_ks.copy()
     if plot:
         fig,ax = plt.subplots(ncols=2, figsize=[12,8])
@@ -332,7 +457,7 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(20,200)
         circle = plt.Circle((0, 0), 2.*knorms.min()/NMPERPIXEL,
                             edgecolor='y', fill=False, alpha=0.6)
         ax[0].add_artist(circle)
-        axlim = kxs[center[0]+pix_norm_range[1]]
+        axlim = kxs[min(center[0] + pix_norm_range[1], len(kxs)-1)]
         ax[0].set_xlim(-axlim,axlim)
         ax[0].set_ylim(-axlim,axlim)
         ax[1].imshow(image.T)
@@ -368,8 +493,12 @@ def wff(image, sigma, threshold, wl, wu, verbose=False):
     """Windowed Fourier Filtering of image.
     with gaussian window width sigma,
     filter such that all frequencies above threshold
-    between frequency boundaries wl and wu are retained
-    The scheme is shown inFig. 3. A fringepattern is transforme
+    between frequency boundaries wl and wu are retained.
+    Based directly on original MATLAB algorithm in [1].
+    
+    References
+    ----------
+    [1] https://doi.org/10.1016/j.optlaseng.2005.10.012
     """
     s = round(2*sigma)
     yy,xx = np.mgrid[-s:s,-s:s]
@@ -398,10 +527,13 @@ def wfr(image, sigma, kx, ky, kw, kstep):
     in the square 2*kw around it which has the highest lockin amplitude.
     return both lockin amplitude and phase as well as the used kvector
     in a dictionary structure.
-    Based directly on original MATLAB algorithm in https://doi.org/10.1016/j.optlaseng.2005.10.012"""
+    Based directly on original MATLAB algorithm in https://doi.org/10.1016/j.optlaseng.2005.10.012
+    """
     s = round(2*sigma)
-    wyy, wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
+    wyy, wxx = np.mgrid[-s:s, -s:s]
+    xx, yy = np.meshgrid(np.arange(image.shape[0]), 
+                         np.arange(image.shape[1]), 
+                         indexing='ij')
     w = np.exp(-(wxx**2 + wyy**2) / (2*sigma**2))
     w = w / np.sqrt((w**2).sum())
     g = {'wx': np.zeros_like(image),
@@ -424,116 +556,118 @@ def wfr2(image, sigma, kx, ky, kw, kstep):
     """Adaptive GPA. Find the phase corresponding to 
     kx,ky k-vector by using the reference vector
     in the square 2*kw around it which has the highest lockin amplitude.
-    return the used k-vector as well as the complex lock-in signal.
+    
+    Returns
+    -------
+    g : dict
+        result the used k-vector in 'w' 
+        as well as the complex lock-in signal 'lockin'
     """
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
+    s = round(2 * sigma)
+    wyy, wxx = np.mgrid[-s:s, -s:s]
+    xx, yy = np.meshgrid(np.arange(image.shape[0]), 
+                         np.arange(image.shape[1]), 
+                         indexing='ij')
     w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
     w = w/np.sqrt((w**2).sum())
     g = {'w': np.zeros(image.shape+(2,)), 
         'lockin': np.zeros_like(image, dtype=np.complex),
         }
-    for wx in np.arange(kx-kw,kx+kw, kstep):
-        for wy in np.arange(ky-kw,ky+kw, kstep):
+    for wx in np.arange(kx-kw, kx+kw, kstep):
+        for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = GPA(image, wx, wy, sigma)
-            sf *= np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy))
+            sf *= np.exp(-2j*np.pi*((wx-kx)*xx + (wy-ky)*yy))
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t]
-            g['w'][t] = np.array([wx,wy])
+            g['w'][t] = np.array([wx, wy])
     g['w'] = np.moveaxis(g['w'],-1,0)
     return g
 
 def wfr3(image, sigma, klist, kref):
-    """Iterate over klist, calculate GPA of image for each k, with sigma width
+    """Iterate over klist, calculate GPA of image for each k, 
+    with sigma width.
     accept new value if lockin amplitude is larger.
-    Compensate phase to be relative to kref"""  
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    Compensate phase to be relative to kref
+    """  
+    xx, yy = np.meshgrid(np.arange(image.shape[0]), 
+                         np.arange(image.shape[1]), 
+                         indexing='ij')
     g = {'w': np.zeros(image.shape+(2,)), 
         'lockin': np.zeros_like(image, dtype=np.complex),
         }
-    for wx,wy in klist:
+    for wx, wy in klist:
         sf = GPA(image, wx, wy, sigma)
-        sf *= np.exp(-2j*np.pi*((wx-kref[0])*xx+(wy-kref[1])*yy))
+        sf *= np.exp(-2j*np.pi * ((wx-kref[0])*xx + (wy-kref[1])*yy))
         t = np.abs(sf) > np.abs(g['lockin'])
         g['lockin'][t] = sf[t]
-        g['w'][t] = np.array([wx,wy])
-    g['w'] = np.moveaxis(g['w'],-1,0)
+        g['w'][t] = np.array([wx, wy])
+    g['w'] = np.moveaxis(g['w'], -1, 0)
     return g
 
 
 def optwfr2(image, sigma, kx, ky, kw, kstep):
     """Optimized version of wfr2.
     Optimization in amount of computation done in each step by only
-    computing updated values."""
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    computing updated values.
+    """
+    xx, yy = np.ogrid[0:image.shape[0],
+                      0:image.shape[1]]
     g = {'w': np.zeros(image.shape+(2,)), 
         'lockin': np.zeros_like(image, dtype=np.complex),
         }
-    for wx in np.arange(kx-kw,kx+kw, kstep):
-        for wy in np.arange(ky-kw,ky+kw, kstep):
+    for wx in np.arange(kx-kw, kx+kw, kstep):
+        for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
             t = np.abs(sf) > np.abs(g['lockin'])
-            g['lockin'][t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
-            g['w'][t] = np.array([wx,wy])
-    g['w'] = np.moveaxis(g['w'],-1,0)
+            g['lockin'][t] = sf[t] * np.exp(-2j*np.pi * ((wx-kx)*xx + (wy-ky)*yy)[t])
+            g['w'][t] = np.array([wx, wy])
+    g['w'] = np.moveaxis(g['w'], -1, 0)
     return g
 
 
 def wfr2_only_lockin(image, sigma, kx, ky, kw, kstep):
-    """Optimized version of wfr2 calculating only the lockin signal.
+    """Optimized version of wfr2 calculating only the lock-in signal.
     Optimization in amount of computation done in each step by only
-    computing updated values."""
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    computing updated values.
+    """
+    xx, yy = np.ogrid[0:image.shape[0], 0:image.shape[1]]
     g = np.zeros_like(image, dtype=np.complex)
-    for wx in np.arange(kx-kw,kx+kw, kstep):
-        for wy in np.arange(ky-kw,ky+kw, kstep):
+    for wx in np.arange(kx-kw, kx+kw, kstep):
+        for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
             t = np.abs(sf) > np.abs(g)
-            g[t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
+            g[t] = sf[t] * np.exp(-2j*np.pi * ((wx-kx)*xx + (wy-ky)*yy)[t])
     return g
 
 def wfr2_only_lockin_vec(image, sigma, kx, ky, kw, kstep):
-    """Vectorized version of wfr2_only_lockin. vectorize using dask"""
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    """Vectorized version of wfr2_only_lockin. 
+    
+    vectorized using dask.
+    """
+    xx, yy = np.ogrid[0:image.shape[0], 0:image.shape[1]]
     g = np.zeros_like(image, dtype=np.complex)
-    for wx in np.arange(kx-kw,kx+kw, kstep):
-        wys = np.arange(ky-kw,ky+kw, kstep)
+    for wx in np.arange(kx-kw, kx+kw, kstep):
+        wys = np.arange(ky-kw, ky+kw, kstep)
         wpairs = da.stack(([wx]*len(wys), wys),axis=-1).rechunk({0:1})
         sf = vecGPA(image, wpairs, sigma).compute()
-        for i,wy in enumerate(wys):
+        for i, wy in enumerate(wys):
             t = np.abs(sf[i]) > np.abs(g)
-            g[t] = sf[i][t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
+            g[t] = sf[i][t] * np.exp(-2j*np.pi * ((wx-kx)*xx+(wy-ky)*yy)[t])
     return g
 
 
 def wfr2_grad(image, sigma, kx, ky, kw, kstep):
-    """Adapted version of wfr2. In addition to returning the 
-    used k-vector and lock-in signal, return the gradient of the lock-in
-    signal as well, for each pixel computed from the values of the surrounding pixels
-    of the GPA of the best k-vector. Slightly more accurate, determination of this gradient,
-    as boundary effects are mitigated"""
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    """Adapted version of wfr2. 
+    
+    In addition to returning the used k-vector and lock-in signal, 
+    return the gradient of the lock-in signal as well, 
+    for each pixel computed from the values of the surrounding pixels
+    of the GPA of the best k-vector. 
+    Slightly more accurate, determination of this gradient,
+    as boundary effects are mitigated
+    """
+    xx, yy = np.ogrid[0:image.shape[0],
+                      0:image.shape[1]]
     g = {'w': np.zeros(image.shape+(2,)), 
         'lockin': np.zeros_like(image, dtype=np.complex),
          'grad': np.zeros(image.shape+(2,)), 
@@ -541,30 +675,28 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep):
     for wx in np.arange(kx-kw,kx+kw, kstep):
         for wy in np.arange(ky-kw,ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
-            sf *= np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy))
+            sf *= np.exp(-2j*np.pi * ((wx-kx)*xx + (wy-ky)*yy))
             grad = wrapToPi(np.stack(np.gradient(-np.angle(sf)), axis=-1)*2)/4/np.pi
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t]
-            g['w'][t] = np.array([wx,wy])
+            g['w'][t] = np.array([wx, wy])
             g['grad'][t] = grad[t]
-    g['w'] = np.moveaxis(g['w'],-1,0)
-    print(grad.shape, np.array(np.gradient(-np.angle(sf))).shape, g['grad'].shape)
+    g['w'] = np.moveaxis(g['w'], -1, 0)
     return g
+
 
 def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
     """Optimized version of wfr2_grad. In addition to returning the 
     used k-vector and lock-in signal, return the gradient of the lock-in
     signal as well, for each pixel computed from the values of the surrounding pixels
     of the GPA of the best k-vector. Slightly more accurate, determination of this gradient,
-    as boundary effects are mitigated"""
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
-    g = {'w': np.zeros(image.shape+(2,)), 
-        'lockin': np.zeros_like(image, dtype=np.complex),
-         'grad': np.zeros(image.shape+(2,)), 
+    as boundary effects are mitigated.
+    """
+    xx, yy = np.ogrid[0:image.shape[0],
+                      0:image.shape[1]]
+    g = {'w': np.zeros(image.shape + (2,)), 
+         'lockin': np.zeros_like(image, dtype=np.complex),
+         'grad': np.zeros(image.shape + (2,)), 
         }
     for wx in np.arange(kx-kw, kx+kw, kstep):
         for wy in np.arange(ky-kw, ky+kw, kstep):
@@ -572,19 +704,17 @@ def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
             t = np.abs(sf) > np.abs(g['lockin'])
             grad =  np.stack(np.gradient(-np.angle(sf)), axis=-1)[t]
             g['lockin'][t] = sf[t] * np.exp(-2j*np.pi*((wx-kx)*xx + (wy-ky)*yy)[t])
-            g['w'][t] = np.array([wx,wy])
-            g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx), (wy-ky)], axis=-1))
-    g['w'] = np.moveaxis(g['w'],-1,0)
-    g['grad'] = wrapToPi(g['grad']*2)/2
+            g['w'][t] = np.array([wx, wy])
+            g['grad'][t] = grad + 2*np.pi * np.stack([(wx-kx), (wy-ky)], axis=-1)
+    g['w'] = np.moveaxis(g['w'], -1 ,0)
+    g['grad'] = wrapToPi(2 * g['grad']) / 2
     return g
+
 
 def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
     """Vectorized version of wfr2_grad_opt. vectorize using dask"""
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.ogrid[0:image.shape[0],0:image.shape[1]]
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    xx, yy = np.ogrid[0:image.shape[0],
+                      0:image.shape[1]]
     g = {'w': np.zeros(image.shape+(2,)), 
         'lockin': np.zeros_like(image, dtype=np.complex),
          'grad': np.zeros(image.shape+(2,)), 
@@ -596,33 +726,32 @@ def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
         for i,wy in enumerate(wys):
             t = np.abs(sf[i]) > np.abs(g['lockin'])
             grad =  np.stack(np.gradient(-np.angle(sf[i])), axis=-1)[t]
-            g['lockin'][t] = sf[i][t] * np.exp(-2j*np.pi*((wx-kx)*xx+(wy-ky)*yy)[t])
+            g['lockin'][t] = sf[i][t] * np.exp(-2j*np.pi*((wx-kx)*xx + (wy-ky)*yy)[t])
             g['w'][t] = np.array([wx,wy])
-            g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx),(wy-ky)],axis=-1))
+            g['grad'][t] = grad + 2*np.pi*(np.stack([(wx-kx), (wy-ky)], axis=-1))
     g['w'] = np.moveaxis(g['w'],-1,0)
     g['grad'] = wrapToPi(g['grad']*2)/2
     return g
+
 
 def wfr4(image, sigma, klist, kref, dk):
     """Iterate over klist, calculate GPA of image for each k, with sigma width
     accept new value if lockin amplitude is larger and new k is maximum 2 lattice positions
     dk away from old k. Only makes sense if klist is ordered.
     Compensate phase to be relative to kref"""    
-    s = round(2*sigma)
-    wyy,wxx = np.mgrid[-s:s,-s:s]
-    xx, yy = np.meshgrid(np.arange(image.shape[0]), np.arange(image.shape[1]), indexing='ij')
-    w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
-    w = w/np.sqrt((w**2).sum())
+    xx, yy = np.meshgrid(np.arange(image.shape[0]), 
+                         np.arange(image.shape[1]), 
+                         indexing='ij')
     g = {'w': np.zeros(image.shape+(2,)), 
         'lockin': np.zeros_like(image, dtype=np.complex),
         }
-    g['w'][...,0] = klist[0,0]
-    g['w'][...,1] = klist[0,1]
-    for wx,wy in klist:
+    g['w'][..., 0] = klist[0, 0]
+    g['w'][..., 1] = klist[0, 1]
+    for wx, wy in klist:
         sf = GPA(image, wx, wy, sigma)
         sf *= np.exp(-2j*np.pi*((wx-kref[0])*xx+(wy-kref[1])*yy))
         t = np.abs(sf) > np.abs(g['lockin'])
-        t = t & (np.linalg.norm(g['w'] - np.array([wx,wy]),axis=-1) < 2*np.sqrt(2)*dk)
+        t = t & (np.linalg.norm(g['w'] - np.array([wx,wy]), axis=-1) < 2*np.sqrt(2)*dk)
         g['lockin'][t] = sf[t]
         g['w'][t] = np.array([wx, wy])
     g['w'] = np.moveaxis(g['w'], -1, 0)
@@ -637,16 +766,16 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
     Used in conjunction with wfr3 or wfr4
     """
     doubleks = np.concatenate([pks, -pks])
-    kmax = np.linalg.norm(pks, axis=1).max()*kmax
-    kmin = np.linalg.norm(pks, axis=1).max()*kmin
+    kmax = np.linalg.norm(pks, axis=1).max() * kmax
+    kmin = np.linalg.norm(pks, axis=1).max() * kmin
     if dk is None:
-        dk = np.linalg.norm(pks, axis=1).mean()/10
+        dk = np.linalg.norm(pks, axis=1).mean() / 10
     kk = np.mgrid[-kmax:kmax:0.005, -kmax:kmax:0.005]
     dists = ((np.moveaxis(kk[...,None], 0, -1) - doubleks)**2).sum(axis=-1)
     r = (kk**2).sum(axis=0)
     kmask0 = (r < kmax**2) & (r > kmin**2)
     klists = []
-    for i,pk in enumerate(pks):
+    for i, pk in enumerate(pks):
         kmask = kmask0 & (dists.min(axis=-1) == dists[...,i])
         klist = kk[:, kmask].T
         if sort_list:
@@ -655,21 +784,21 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
         klists.append(klist)
     return klists
 
+
 def extract_displacement_field(image, kvecs):
     """Top level convenience function, WIP"""
     gs = []
-    kw = np.linalg.norm(kvecs,axis=1).mean()/2.5
-    sigma = 10
-    kstep = kw/5
+    kw = np.linalg.norm(kvecs, axis=1).mean() / 2.5
+    sigma = int(np.ceil(1/np.linalg.norm(kvecs, axis=1).min()))
+    kstep = kw/3
     for pk in kvecs:
-        g = wfr2_grad_opt(image - image.mean(), sigma,
-                          pk[0], pk[1], kw=kw, kstep=kstep)
+        g = optwfr2(image - image.mean(), sigma,
+                    pk[0], pk[1], kw=kw, kstep=kstep)
         gs.append(g)
     phases = np.stack([np.angle(g['lockin']) for g in gs])
     mask = np.zeros_like(image, dtype=bool)
-    dr = 2*sigma
+    dr = 2 * sigma
     mask[dr:-dr, dr:-dr] = 1.
     weights = np.stack([np.abs(g['lockin']) for g in gs]) * (mask+1e-6)
-    u = GPA.reconstruct_u_inv_from_phases(kvecs, phases, weights)
+    u = reconstruct_u_inv_from_phases(kvecs, phases, weights)
     return u
-

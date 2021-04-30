@@ -82,15 +82,19 @@ def remove_negative_duplicates(ks):
 
 
 def standardize_ks(kvecs):
-    """standardize order and quadrant of lattice representation
+    """Standardize order and quadrant of lattice representation
     
     For a list `kvecs` of k-vectors representing a lattice,
-    return the sorted vectors with positive angles i.e. without
-    negative duplicates.
+    return the three sorted vectors closest to zero angle.
+    #with positive angles i.e. without negative duplicates.
     """
     newvecs = remove_negative_duplicates(kvecs)
     symmetry = len(newvecs) * 2
     newvecs = np.concatenate([newvecs, -newvecs], axis=0)
     angles = np.arctan2(*newvecs.T[::-1])
-    newvecs = newvecs[np.argsort(angles)]
-    return newvecs[-symmetry//2:]
+    ind = np.argsort(np.abs(angles))[:3]
+    ind = ind[np.argsort(angles[ind])]
+    #newvecs = newvecs[np.argsort(angles)]
+    #newvecs = newvecs[-symmetry//2:]
+    newvecs = newvecs[ind]
+    return newvecs
