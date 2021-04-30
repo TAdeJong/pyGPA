@@ -27,10 +27,10 @@ from pyGPA.mathtools import periodic_difference, standardize_ks
 def test_extract_primary_ks(r_k, theta, psi, kappa):
     ori_ks = latticegen.generate_ks(r_k, theta, kappa=kappa, psi=psi)[:-1]
     original = latticegen.hexlattice_gen(r_k, theta, order=1, size=256, kappa=kappa, psi=psi).compute()
-    ext_ks,_ = GPA.extract_primary_ks(original, DoG=False)
+    ext_ks, _ = GPA.extract_primary_ks(original, DoG=False)
     # rel_diffs = np.linalg.norm(standardize_ks(ext_ks) - standardize_ks(ori_ks[:3]), axis=1) / r_k
     # standardize ks has edge cases. Instead, compare each found k to the closed original k
-    rel_diffs = np.linalg.norm((ext_ks[None] - ori_ks[:,None]), axis=-1).min(axis=0) / r_k
+    rel_diffs = np.linalg.norm((ext_ks[None] - ori_ks[:, None]), axis=-1).min(axis=0) / r_k
     assert np.all(rel_diffs < 0.2)
-    
+
 # TODO: higher order lattice, with gaussian noise.

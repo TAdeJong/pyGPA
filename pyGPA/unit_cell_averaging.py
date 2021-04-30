@@ -9,6 +9,7 @@ def forward_transform(vecs, ks):
     A = ks
     return vecs @ A.T
 
+
 def backward_transform(vecs, ks):
     #A = 2/np.sqrt(3)*np.linalg.inv(ks)
     A = np.linalg.inv(ks)
@@ -34,20 +35,20 @@ def cart_in_uc(vecs, ks, rmin=0):
     return backward_transform(forward_transform(vecs, ks) % 1., ks) - rmin
 
 
-
 @njit()
 def float_overlap(f):
     """return the overlap area of a square pixel shifted by f
     with its neighbours"""
-    A = np.stack((1-f,f))
-    return A[:,0] * np.expand_dims(A[:,1],1)
+    A = np.stack((1-f, f))
+    return A[:, 0] * np.expand_dims(A[:, 1], 1)
+
 
 def calc_ucell_parameters(ks, z):
     corners = np.array([[0., 0.],
                         [0., 1.],
                         [1., 0.],
                         [1., 1.]])
-    cornervals = backward_transform(corners, ks)# @ np.linalg.inv(ks).T
+    cornervals = backward_transform(corners, ks)  # @ np.linalg.inv(ks).T
     rmin = cornervals.min(axis=0)
     rsize = tuple((z*np.ceil(cornervals.max(axis=0) - np.floor(rmin))).astype(int))
     return rmin, rsize
@@ -55,7 +56,7 @@ def calc_ucell_parameters(ks, z):
 
 def unit_cell_average(image, ks, u=None, z=1):
     @njit()
-    def nb_forward_transform(vecs):   
+    def nb_forward_transform(vecs):
         return vecs @ ks.T
 
     @njit()
@@ -64,8 +65,8 @@ def unit_cell_average(image, ks, u=None, z=1):
 
     rmin, rsize = calc_ucell_parameters(ks, z)
     if u is None:
-        u = np.zeros(image.shape+(2,), dtype=np.float64)    
-    
+        u = np.zeros(image.shape+(2,), dtype=np.float64)
+
     @njit()
     def nb_cart_in_uc(vecs):
         """Convert 2D vecs to cartesian coordinates within the unit cell,
@@ -73,8 +74,8 @@ def unit_cell_average(image, ks, u=None, z=1):
         Due to numba constraints only takes a one additional dimension,
         i.e. a list of vectors.
         """
-        return nb_backward_transform((nb_forward_transform(vecs) ) % 1.) - rmin
-    
+        return nb_backward_transform((nb_forward_transform(vecs)) % 1.) - rmin
+
     @njit()
     def _unit_cell_average(image, u, z=1):
         """Average image with a distortion u over all it's unit cells
@@ -116,7 +117,7 @@ def add_to_position(value, R, res, weight):
 #                         [1., 0.],
 #                         [1., 1.]])
 #     neighbor_pos = nb_cart_in_uc(R_floor + corners) + rmin
-    
+
 #     handled = np.zeros(4, dtype=np.bool)
 #     for i in len(neighbor_pos):
 #         if not handled[i]:
@@ -124,8 +125,7 @@ def add_to_position(value, R, res, weight):
 #             add_to_position(image[i, j], newpos, res, weight)
 #             dists = np.linalg.norm(neighbor_pos - newpos, axis=-1)
 #             handled[dists <= np.sqrt(2)] = True
-            
-        
+
 
 @njit()
 def _unit_cell_average2(image, u, z=1):
@@ -149,6 +149,7 @@ def _unit_cell_average2(image, u, z=1):
                         res[R_int[0]+li, R_int[1]+lj] += image[i, j] * overlap[li, lj]
                         weight[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
     return res/weight
+
 
 def expand_unitcell(unit_cell_image, ks, shape, z=1, z2=1, u=0):
     """Given a unit_cell_image as produced by a unit_cell_average function,
