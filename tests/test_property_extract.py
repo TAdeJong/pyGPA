@@ -11,14 +11,14 @@ from pyGPA.mathtools import periodic_difference
 
 @given(theta=st.floats(0., 360.),
        psi=st.floats(-90., 90.),
-       kappa=st.floats(1.+1e-10, 1e10, exclude_min=True),
+       kappa=st.floats(1.+1e-7, 1e10, exclude_min=True),
        a=st.floats(1e-10, 1e10, exclude_min=True),
        )
 def test_props_from_J(theta, psi, kappa, a):
     W = rotation_matrix(np.deg2rad(theta))
     V = rotation_matrix(np.deg2rad(psi))
     D = scaling_matrix(kappa)*a
-    J_ori = W @ V.T @ D @ V
+    J_ori = V.T @ D @ V @ W
     props = pe.props_from_J(J_ori)
     assert np.isclose(periodic_difference(props[0], theta, period=360), 0, atol=1e-6)
     assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-5)
@@ -27,26 +27,26 @@ def test_props_from_J(theta, psi, kappa, a):
 
 @given(theta=st.floats(0., 360,),
        psi=st.floats(-90., 90.),
-       kappa=st.floats(1.+1e-10, 1e10, exclude_min=True),
-       a=st.floats(1e-10, 1e10, exclude_min=True),
+       kappa=st.floats(1.+1e-7, 1e10, exclude_min=True),
+       a=st.floats(1e-5, 1e5, exclude_min=True),
        )
 def test_svd_assumptions(theta, psi, kappa, a):
     W = rotation_matrix(np.deg2rad(theta))
     V = rotation_matrix(np.deg2rad(psi))
     D = scaling_matrix(kappa)*a
-    J_ori = W @ V.T @ D @ V
+    J_ori = V.T @ D @ V @ W
     u,s,v, = np.linalg.svd(J_ori)
-    u = np.sign(np.diag(v))*u
-    v = (np.sign(np.diag(v))*v).T
-    angle = (u@v)
+    v = (np.sign(np.diag(u))*v)
+    u = (np.sign(np.diag(u))*u).T
+    angle = (u@v).T
     assert np.allclose(angle, W)
     assert np.allclose(np.diag(s), D)
-    assert np.allclose(v, V)
+    assert np.allclose(V, u)
     assert np.isclose(np.linalg.det(D), np.linalg.det(J_ori))
     
-@given(theta=st.floats(0., 360., exclude_min=True),
+@given(theta=st.floats(-180., 180., exclude_min=True),
        psi=st.floats(-90., 90.),
-       kappa=st.floats(1.+1e-7, 1e10, exclude_min=True),
+       kappa=st.floats(1.+1e-7, 1e4, exclude_min=True),
        a=st.floats(1e-10, 1e10, exclude_min=True),
        )
 def test_calc_props_from_kvecs(theta, psi, kappa, a):
@@ -54,8 +54,8 @@ def test_calc_props_from_kvecs(theta, psi, kappa, a):
                                    kappa=kappa, 
                                    psi=psi)[:3]
     props = pe.calc_props_from_kvecs4(kvecs)
-    assert np.isclose(periodic_difference(props[0], theta, period=360), 0, atol=1e-6)
-    assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-5)
+    assert np.isclose(periodic_difference(props[0], theta, period=60), 0, atol=1e-6)
+    assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-2)
     assert np.isclose(props[2], a)
     assert np.isclose(props[3], kappa)
     

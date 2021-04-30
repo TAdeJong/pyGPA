@@ -25,7 +25,7 @@ def phases2J(kvecs, phases, weights, nmperpixel):
     #dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
-    J = -np.stack([dudx,dudy], axis=-1)
+    J = - np.stack([dudx,dudy], axis=-1)
     J = np.moveaxis(J, 0, -2)
     J = (np.eye(2) + J)
     return J
@@ -53,12 +53,16 @@ def phasegradient2J(kvecs, grads, weights, nmperpixel):
     J = (np.eye(2) + J)
     return J
 
-def kvecs2J(ks):
-    kvecs = ks  # standardize_ks(ks)
-    r_k, theta_0, symmetry = get_initial_props(ks)
+def kvecs2J(ks, standardize=True):
+    if standardize:
+        kvecs = standardize_ks(ks)
+    else:
+        kvecs = ks
+    r_k, theta_0, symmetry = get_initial_props(kvecs)
     krefs = latticegen.generate_ks(r_k, theta_0, sym=symmetry)[:3]
     #krefs = latticegen.generate_ks(r_k, 0, sym=symmetry)[:3]
-    #krefs = standardize_ks(krefs)
+    if standardize:
+        krefs = standardize_ks(krefs)
     dks = krefs - kvecs
     
     J = np.linalg.lstsq(krefs, -dks, rcond=None)[0]
@@ -70,13 +74,13 @@ def kvecs2T(ks):
     """T is the transformation from lattice with zero angle
     and unit size"""
     kvecs = ks  # standardize_ks(ks)
-    r_k, theta_0, symmetry = get_initial_props(ks)
+    r_k, theta_0, symmetry = get_initial_props(kvecs)
     krefs = latticegen.generate_ks(r_k, 0, sym=symmetry)[:3]
-    #krefs = standardize_ks(krefs)
+    krefs = standardize_ks(krefs)
     dks = krefs - kvecs
     
-    J = np.linalg.lstsq(krefs, -dks)[0]
-    J = r_k * (np.eye(2) + J)
+    J = np.linalg.lstsq(krefs, -dks, rcond=None)[0]
+    J = r_k * (np.eye(2) + J).T
     return J
 
 
@@ -90,20 +94,25 @@ def props_from_J(J, refangle=0., refscale=1):
         local angle w.r.t. horizontal in degrees
     aniangle : float or ndarray
         local direction of the anisotropy in degrees
+        also w.r.t. horizontal
     alpha : float or ndarray
         local unit cell scaling factor before anisotropy
     kappa : float or ndarray
         local anisotropy magnitude
     """
     u, s, v = np.linalg.svd(J)
-    u = np.sign(np.diag(v)) * u
-    v = (np.sign(np.diag(v)) * v).T
-    u_p = u @ v
+    #u = np.sign(np.diag(v)) * u
+    #v = (np.sign(np.diag(v)) * v)
+    #u_p = u @ v
+    v = (np.sign(np.diag(u))*v)
+    u = (np.sign(np.diag(u))*u).T
+    u_p = (u @ v).T
     angle = np.rad2deg(np.arctan2(u_p[...,1,0], u_p[...,0,0]))
-    aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
+    aniangle = np.rad2deg(np.arctan2(u[...,1,0], u[...,0,0])) % 180
     alpha = s[...,1]
     kappa = s[...,0] / s[...,1]
-    return np.array([angle + refangle, aniangle + refangle, alpha * refscale, kappa])
+    #return np.array([angle + refangle, aniangle + refangle, alpha * refscale, kappa])
+    return np.array([angle + refangle, aniangle, alpha * refscale, kappa])
 
 
 def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
@@ -144,6 +153,17 @@ def calc_eps_from_phasegradient(kvecs, grads, weights, nmperpixel):
 
 
 def J_2_J_diff(J, theta_iso):
+    t = np.deg2rad(theta_iso)
+    J0 = np.array([[np.cos(t)-1, -np.sin(t)],
+                   [np.sin(t), np.cos(t)-1]])
+    J_diff = J - np.eye(2)
+    # Should we use local J instead of J0 here?
+    J_diff = J_diff @ J0
+    J_diff = (np.eye(2) + J_diff)
+    
+    return J_diff
+
+def T_2_T_diff(J, theta_iso):
     t = np.deg2rad(theta_iso)
     J0 = np.array([[np.cos(t)-1, -np.sin(t)],
                    [np.sin(t), np.cos(t)-1]])
@@ -289,12 +309,12 @@ def calc_props_from_kvecs4(ks):
     r_k, theta_0, symmetry = get_initial_props(ks)
     props = props_from_J(J)#, **get_ref_prop_dict(ks))
     props[0] = props[0] + theta_0
-    props[1] = props[1] + theta_0
+    props[1] = props[1] #+ theta_0
     props[2] = props[2] * r_k
     return props
 
 def get_initial_props(ks):
-    kvecs = ks  # standardize_ks(ks)
+    kvecs = standardize_ks(ks)
     symmetry = 2 * len(kvecs)
     r_k = np.linalg.norm(kvecs, axis=1).mean()
     theta_0 = np.rad2deg(periodic_average(np.arctan2(*(kvecs).T[::-1]), 
