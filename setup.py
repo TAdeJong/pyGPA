@@ -3,9 +3,13 @@ import setuptools
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+with open("requirements.txt", "r") as fh:
+    requirements = [line.strip() for line in fh]
+
 setuptools.setup(
     name="pyGPA",
-    version="0.0.1",
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     author="Tobias A. de Jong",
     author_email="tobiasadejong@gmail.com",
     description="A Python package for Geometric Phases Analysis and related techniques",
@@ -20,13 +24,7 @@ setuptools.setup(
         "Topic :: Scientific/Engineering :: Physics",
         "Topic :: Scientific/Engineering :: Image Processing",
     ],
-    python_requires='>=3.6',
-    install_requires=[
-        "dask",
-        "scipy",
-        "numpy",
-        "numba",
-        "scikit-image",
-        ],
+    python_requires='>=3.7',
+    install_requires=requirements,
 )
 
