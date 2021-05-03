@@ -334,7 +334,7 @@ def get_ref_prop_dict(ks):
 
 
 def calc_abcd(J, delta=0.16):
-    """decompose J into symmetric and antisymmetric 
+    """decompose J into symmetric and antisymmetric
     parts in both directions. Broadcasts over the first
     dimensions of J (assumes J = (NxMx)2x2)
     """

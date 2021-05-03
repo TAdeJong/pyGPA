@@ -10,8 +10,8 @@ https://github.com/scikit-image/scikit-image/issues/4622
 
 author: Tobias A. de Jong
 Based on:
-Ghiglia, Dennis C., and Louis A. Romero. 
-"Robust two-dimensional weighted and unweighted phase unwrapping that uses 
+Ghiglia, Dennis C., and Louis A. Romero.
+"Robust two-dimensional weighted and unweighted phase unwrapping that uses
 fast transforms and iterative methods." JOSA A 11.1 (1994): 107-117.
 URL: https://doi.org/10.1364/JOSAA.11.000107
 and an existing MATLAB implementation:
@@ -146,7 +146,7 @@ def phase_unwrap(psi, weight=None, kmax=100):
     This function uses an algorithm described by Ghiglia and Romero
     and can either be used with or without weight array.
     It is especially suited to recover a unwrapped phase image
-    from a (noisy) complex type image, where psi would be 
+    from a (noisy) complex type image, where psi would be
     the angle of the complex values and weight the absolute values
     of the complex image.
     """

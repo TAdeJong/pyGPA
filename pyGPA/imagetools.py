@@ -41,11 +41,15 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
     return im
 
 
-def indicate_k(pks, i, ax=None, inset=True, size="25%", origin='upper'):
+def indicate_k(pks, i, ax=None, inset=True, size="25%", origin='upper', s=10):
     """Indicate the i-th vector in the list of vectors pks with an arrow
     and highlight in a scatterplot.
     If inset=True (default), create a new inset axis in ax.
-    Return the axis in which the vectors have been drawn.
+
+    Returns
+    -------
+    ax:
+        The axis in which the vectors have been drawn.
     """
     ks = pks.copy()
     if not ax:
@@ -59,13 +63,13 @@ def indicate_k(pks, i, ax=None, inset=True, size="25%", origin='upper'):
         ax.patch.set_alpha(0.0)
     if origin == 'upper':
         ks[:, 1] *= -1
-    ax.scatter(*np.concatenate([ks, -ks, [[0, 0]]]).T, color='gray', s=10)
-    ax.scatter(ks[i, 0], ks[i, 1], color='red', s=30)
+    ax.scatter(*np.concatenate([ks, -ks, [[0, 0]]]).T, color='gray', s=s)
+    ax.scatter(ks[i, 0], ks[i, 1], color='red', s=3*s)
     if isinstance(i, collections.Iterable):
         for j in i:
             ax.arrow(0, 0, ks[j, 0], ks[j, 1], length_includes_head=True)
     else:
-        ax.arrow(0, 0, ks[i, 0], ks[i, 1], length_includes_head=True)
+        ax.arrow(0, 0, ks[i, 0], ks[i, 1], length_includes_head=True, color='black')
     ax.set_aspect('equal')
     return ax
 

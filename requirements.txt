@@ -4,3 +4,4 @@ dask
 numba
 scikit-image
 matplotlib
+latticegen

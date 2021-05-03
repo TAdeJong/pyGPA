@@ -640,7 +640,8 @@ def wfr2_only_lockin(image, sigma, kx, ky, kw, kstep):
     Optimization in amount of computation done in each step by only
     computing updated values.
     """
-    xx, yy = np.ogrid[0:image.shape[0], 0:image.shape[1]]
+    xx, yy = np.ogrid[0:image.shape[0],
+                      0:image.shape[1]]
     g = np.zeros_like(image, dtype=np.complex)
     for wx in np.arange(kx-kw, kx+kw, kstep):
         for wy in np.arange(ky-kw, ky+kw, kstep):
@@ -796,15 +797,17 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
     return klists
 
 
-def extract_displacement_field(image, kvecs):
+def extract_displacement_field(image, kvecs, sigma=None, kwscale=2.5, ksteps=3,
+                               return_gs=False, wfr_func=optwfr2):
     """Top level convenience function, WIP"""
+    kw = np.linalg.norm(kvecs, axis=1).mean() / kwscale
+    if sigma is None:
+        sigma = int(np.ceil(1/np.linalg.norm(kvecs, axis=1).min()))
+    kstep = kw / ksteps
     gs = []
-    kw = np.linalg.norm(kvecs, axis=1).mean() / 2.5
-    sigma = int(np.ceil(1/np.linalg.norm(kvecs, axis=1).min()))
-    kstep = kw/3
     for pk in kvecs:
-        g = optwfr2(image - image.mean(), sigma,
-                    pk[0], pk[1], kw=kw, kstep=kstep)
+        g = wfr_func(image - image.mean(), sigma,
+                     pk[0], pk[1], kw=kw, kstep=kstep)
         gs.append(g)
     phases = np.stack([np.angle(g['lockin']) for g in gs])
     mask = np.zeros_like(image, dtype=bool)
@@ -812,4 +815,6 @@ def extract_displacement_field(image, kvecs):
     mask[dr:-dr, dr:-dr] = 1.
     weights = np.stack([np.abs(g['lockin']) for g in gs]) * (mask+1e-6)
     u = reconstruct_u_inv_from_phases(kvecs, phases, weights)
+    if return_gs:
+        return u, gs
     return u
