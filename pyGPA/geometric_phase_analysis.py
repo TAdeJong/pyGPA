@@ -167,13 +167,13 @@ def reconstruct_u_inv(kvecs, b, weights=None, use_only_ks=None):
     if use_only_ks is None:
         if weights is None:
             lstsqres = np.linalg.lstsq(K, b.reshape((3, -1)), rcond=None)
-            us = lstsqres[0].reshape((2,)+b[0].shape)
+            us = lstsqres[0].reshape((2,) + b[0].shape)
         else:
             us = myweighed_lstsq(b, K, weights)
     else:
         assert len(use_only_ks) == 2
         us = np.linalg.inv(K[use_only_ks]) @ b[use_only_ks].reshape((2, -1))
-        us = us.reshape((2,)+b[0].shape)
+        us = us.reshape((2,) + b[0].shape)
     return us
 
 
@@ -219,9 +219,9 @@ def reconstruct_u_inv_from_phases(kvecs, phases, weights, weighted_unwrap=True):
 
 def invert_u(us, iters=35, edge=0, mode='nearest'):
     """Find the inverse of the displacement u such that:
-    \vec u_it(\vec r+\vec us(\vec r)) = \vec r
+    $$\vec u_it(\vec r+\vec us(\vec r)) = \vec r$$
     i.e.:
-    If an image has been distorted by sampling at \vec r+ \vec us(\vec r),
+    If an image has been distorted by sampling at $\vec r + \vec us(\vec r)$,
     sampling that image at u_it will sample the original image.
     """
     xx, yy = np.mgrid[:us.shape[1], :us.shape[2]]
@@ -293,7 +293,8 @@ def prep_image(original, vlims=None, edges=None):
 def ratio2angle(R):
     """Given a ratio between unit cell sizes R < 1,
     return the corresponding angle in degrees for
-    $ \theta = 2 \arcsin(R/2) $"""
+    $ \theta = 2 \arcsin(R/2) $
+    """
     return np.rad2deg(2*np.arcsin(R/2))
 
 
@@ -305,13 +306,14 @@ def f2angle(f, nmperpixel=1., a_0=0.246):
     Parameters
     ----------
     f : float
+        frequency in unit cells per pixel
     nmperpixel : float, default=1
     a_0 : float, default=0.246
         Lattice constant of underlying lattice in nm
         default corresponds to graphene
     """
-    ref_linespacing = 0.5*np.sqrt(3)*a_0
-    linespacing = nmperpixel/f
+    ref_linespacing = 0.5*np.sqrt(3) * a_0
+    linespacing = nmperpixel / f
     return ratio2angle(ref_linespacing / linespacing)
 
 
@@ -493,7 +495,7 @@ def smallest_sum(ks):
     if len(ks) != 3:
         return np.nan
     M = np.ones((3, 3)) - 2*np.eye(3)
-    sums = M@ks
+    sums = M @ ks
     return sums[np.argmin(np.linalg.norm(sums, axis=1))]
 
 
