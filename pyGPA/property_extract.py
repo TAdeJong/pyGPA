@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import numpy as np
+from scipy.optimize import least_squares
 
 import latticegen
 
-from .mathtools import wrapToPi, standardize_ks, periodic_average
+from .mathtools import wrapToPi, standardize_ks, periodic_average, periodic_difference
 from .geometric_phase_analysis import calc_diff_from_isotropic, myweighed_lstsq, f2angle
 
 
@@ -65,9 +66,8 @@ def phasegradient2J(kvecs, grads, weights, nmperpixel):
     Using phase gradients calculated in wfr directly counters
     artefacts at reference k-vector boundaries.
     Include calculation of base values from used kvecs.
-    Returns J_diff, the dislocation field gradient of the
-    difference of both layers directly, based on the
-    average twist angle.
+    Returns J w.r.t. kvecs+calc_diff_from_isotropic(kvecs)
+    based on the average twist angle.
     """
     dks = calc_diff_from_isotropic(kvecs)
     K = 2*np.pi*(kvecs + dks)
@@ -466,6 +466,38 @@ def moire_props_from_Jac(kvecs, Jac, nmperpixel, a_0=0.246, decomposition=None):
     #props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
     return props
 
+def twist_matrix(angle):
+    """Create a twist matrix
+
+    an array corresponding to the transformation matrix
+    of a lattice twist over `angle`.
+
+    Parameters
+    ----------
+    angle : float
+        rotation angle in degrees
+
+    Returns
+    -------
+    ndarray (2x2)
+        2D transformation matrix corresponding
+        to the rotation
+    """
+    ha = np.deg2rad(angle/2)
+    B0 = np.array([[np.cos(ha), -np.sin(ha)],
+                     [np.sin(ha), np.cos(ha)]])
+    B0 = B0 - np.array([[np.cos(-ha), -np.sin(-ha)],
+                     [np.sin(-ha), np.cos(-ha)]])
+    return B0
+
+
+def moire_props_from_Jac_2_Kerelsky(kvecs, Jac, nmperpixel, a_0=0.246, decomposition=None):
+    dks = calc_diff_from_isotropic(kvecs)
+    iso_props = Kerelsky_plus(kvecs + dks, nmperpixel, a_0)
+    assert iso_props[2] == 0
+    B0 = twist_matrix(iso_props[0])
+    props = double_strain_decomp(Jac @ B0)
+    return props, isoprops
 
 
 # def get_initial_props(ks, standardize=False):
@@ -512,8 +544,19 @@ def calc_abcd(J, delta=0.16):
     return a, b, c, d
 
 
-def double_strain_decomp(J, delta=0.16):
-    a, b, c, d = calc_abcd(J, delta=delta)
+def double_strain_decomp(Jac, delta=0.16):
+    """Do a double strain decomposition on a Jac
+
+    Returns
+    -------
+    psi : float
+        relative twist angle in degrees
+    theta : float
+        strain angle in degrees
+    epsa : float
+    epsb : float
+    """
+    a, b, c, d = calc_abcd(Jac, delta=delta)
     bd = b*b + d*d
     alpha = 4 / (1-delta)
     #taylored in 1/alpha
@@ -525,12 +568,15 @@ def double_strain_decomp(J, delta=0.16):
     #c1 = ca / (1-ca)
     # Renewed expansion
     c0 = bd * (1 + ca*(1 - 2*np.sqrt(bd) / alpha))
-    c1 = ca * (2*np.sqrt(bd) / alpha - 1)
+    c1 = -ca * (1 - 2*np.sqrt(bd) / alpha)
     btemp = bd + a*a*(1 - c1)
     epsminus = np.sqrt(0.5*(btemp + np.sqrt(btemp**2 + 4*a*a*c0)))
-    assert np.all(epsminus >= 0.)
-    epsplussquare = c0 + c1*epsminus*epsminus
-
+    for i in range(2):
+        epsplussquare = c0 + c1*epsminus*epsminus
+        print('epsminus', epsminus, epsplussquare)
+        epsminussquare = ((bd+a*a) + np.sqrt((bd+a*a)**2 + a*a*epsplussquare))/2
+        epsminus = np.sqrt(epsminussquare)
+        print('epsminus', epsminus)
     #phi = np.arccos(a / epsminus)
     # Two ways to compute epsplus, for debug purposes
     #assert np.all(np.sin(phi) >= 0)
@@ -540,15 +586,18 @@ def double_strain_decomp(J, delta=0.16):
     assert np.all(epsplussquare >= 0)
 
     epsplus = np.sqrt(epsplussquare)
-    phi = np.arcsin(c/(alpha+epsplus))
+    phi = np.arcsin(c / (alpha+epsplus))
 
     epsr = np.tan(phi) * epsminus / epsplus
-    #theta = 0.5*np.arctan((b - d*epsr) / (b*epsr + d))
+    theta = 0.5*np.arctan((b - d*epsr) / (b*epsr + d))
     # I don't know why this gives a seemingly correct answer?
-    theta = 0.5*np.arctan2((b*epsr + d), (b - d*epsr))
+    #theta = 0.5*np.arctan2((b*epsr + d), (b - d*epsr))
     epsa = 0.5*(epsplus + epsminus)
     epsb = 0.5*(epsplus - epsminus)
-    return theta, phi, epsa, epsb, epsplus, epsplussquare
+    return np.array([2*np.rad2deg(phi),
+                     np.rad2deg(theta),
+                     epsa,
+                     epsb]) #epsplus, epsplussquare
 
 
 def moire_amplitudes(theta, psi, epsilon, a_0=0.246):
@@ -559,11 +608,89 @@ def moire_amplitudes(theta, psi, epsilon, a_0=0.246):
     ks2 = latticegen.transformations.apply_transformation_matrix(ks1,  V.T @ D @ V @ W)
     return np.linalg.norm(ks1 - ks2, axis=1)
 
-from scipy.optimize import least_squares
 
-def Kerelsky(kvecs, nmperpixel=1):
+
+def Kerelsky(kvecs, nmperpixel=1., a_0=0.246):
     knorms = np.linalg.norm(kvecs, axis=1) * nmperpixel
-    res = least_squares(lambda x: (moire_amplitudes(*x) - knorms)/knorms.mean(), [1.,0.,0.])
-    print(res)
-    return res.x
-        
+    res = least_squares(lambda x: (moire_amplitudes(*x, a_0) - knorms)/knorms.mean(), [0.01, 0., 0.])
+    if res.cost > 1e-20:
+        res2 = least_squares(lambda x: (moire_amplitudes(*x, a_0) - knorms)/knorms.mean(), [.01, 90., 0.])
+        if res2.cost < res.cost:
+            res = res2
+    if res.success:
+        params = res.x
+    else:
+        params = np.full(4, np.nan)
+    return params
+
+def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
+                  reference=None,
+                  debug=False):
+    """From kvecs, compute properties using Kerelsky et al.
+
+    In addition to what Kerelsky et al. describe,
+    fit a reference angle `xi`.
+
+    Parameters
+    ----------
+    kvecs : array_like, Nx2
+        k-vectors in unit cells per pixel
+    nmperpixel : float
+        resolution, in nm per pixel
+    a_0 : float
+        real space size of the underlying unit cell
+        in nm per unit cell
+    reference : None or 'symmetric'
+    debug : boolean
+
+    Returns
+    -------
+    theta : float
+        twist angle in degrees
+    psi : float
+        strain angle in degrees
+    epsilon : float
+        hetero strain
+    xi : float
+        angle of lattice with respect to horizontal
+        in degrees
+
+    References
+    ----------
+    [1] Kerelsky et al., https://www.nature.com/articles/s41586-019-1431-9
+        Suppl. Note 1.
+    """
+    knorm = np.linalg.norm(kvecs, axis=1).mean() / nmperpixel
+    angles = np.arctan2(*kvecs.T[::-1])
+    lkvecs = kvecs[np.argsort(periodic_difference(angles, periodic_average(angles)))]
+    #lkvecs = standardize_ks(kvecs)
+    def moire_diffs(args):
+        theta, psi, epsilon, xi = args
+        ks1 = latticegen.generate_ks(latticegen.transformations.a_0_to_r_k(a_0), xi)[:3]
+        W = latticegen.transformations.rotation_matrix(np.deg2rad(theta))
+        V = latticegen.transformations.rotation_matrix(np.deg2rad(psi))
+        D = latticegen.transformations.strain_matrix(epsilon)
+        ks2 = latticegen.transformations.apply_transformation_matrix(ks1,  V.T @ D @ V @ W)
+        return np.ravel(lkvecs / nmperpixel - (ks2 - ks1)) / knorm * 100
+    bounds = np.full((2,4), np.inf)
+    bounds[0,:] = -np.inf
+    bounds[0,[0,2]] = 0
+    gtol = 1e-8
+    if a_0 < 1:
+        gtol = gtol* a_0
+    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0,1], lkvecs[0,0]))%360]
+    res = least_squares(moire_diffs, est, bounds=bounds, gtol=gtol)
+    if res.cost > 1e-20:
+        est[1] = 90.
+        res2 = least_squares(moire_diffs, est, bounds=bounds, gtol=gtol)
+        if res2.cost < res.cost:
+            res = res2
+    if debug:
+        print(res)
+    if res.success:
+        params = res.x
+    else:
+        params = np.full(4, np.nan)
+    if reference == 'symmetric':
+        params[3] = params[3] + params[0]/2
+    return params

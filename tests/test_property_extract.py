@@ -3,7 +3,7 @@ from hypothesis import given, example
 import hypothesis.strategies as st
 
 import latticegen
-from latticegen.transformations import rotation_matrix, scaling_matrix, a_0_to_r_k
+from latticegen.transformations import rotation_matrix, scaling_matrix, a_0_to_r_k, epsilon_to_kappa
 
 import pyGPA.property_extract as pe
 from pyGPA.mathtools import periodic_difference
@@ -86,22 +86,23 @@ def test_kvecs2Jac(theta, psi, kappa, a):
     assert np.allclose(rel_diffs, 0, atol=1e-3)
 
 
-@given(theta=st.floats(1e-1, 60 - 1e-1, exclude_min=True),
+@given(theta=st.floats(1e-1, 45 - 1e-1),#, exclude_min=True),
        psi=st.floats(-90., 90.),
-       kappa=st.floats(1.+1e-7, 1.1, exclude_min=True),
+       epsilon=st.floats(1e-5, 0.1, exclude_min=True),
        a=st.floats(1e-3, 1e3, exclude_min=True),
+       xi=st.floats(-180., 180.),
        )
-def test_moire2diff(theta, psi, kappa, a):
-    ks1 = latticegen.generate_ks(a_0_to_r_k(a), 0, kappa=1, psi=psi)
-    ks2 = latticegen.generate_ks(a_0_to_r_k(a), 0+theta, kappa=kappa, psi=psi)
-    props = pe.calc_moire_props_from_kvecs(ks1[:3] - ks2[:3], 
-                               nmperpixel=1, a_0=a,
-                               decomposition=None)
-    assert np.isclose(periodic_difference(props[0], theta, period=60), 0, atol=1e-1)
-    assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-1)
-    #assert np.isclose(props[2], a) #, rtol=1e-6)
-    assert np.isclose(props[3], kappa)
-    
+def test_kerelsky_plus(theta, psi, epsilon, a, xi):
+    ks1 = latticegen.generate_ks(a_0_to_r_k(a), xi, kappa=1, psi=psi)
+    r_k2, kappa = epsilon_to_kappa(a_0_to_r_k(a), epsilon)
+    ks2 = latticegen.generate_ks(r_k2, xi+theta, kappa=kappa, psi=psi)
+    props = pe.Kerelsky_plus(ks2[:3] - ks1[:3],
+                               nmperpixel=1, a_0=a)
+    assert np.isclose(periodic_difference(np.abs(props[0]), theta, period=60), 0, atol=1e-5)
+    assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-3)
+    assert np.isclose(props[2], epsilon, rtol=1e-3, atol=1e-6)
+    assert np.isclose(periodic_difference(props[3], xi, period=360), 0, atol=1e-5)
+
 
 @given(theta=st.floats(1e-6, 60 - 1e-6, exclude_min=True),
        nmperpixel=st.floats(1e-9, 1e9, exclude_min=True),

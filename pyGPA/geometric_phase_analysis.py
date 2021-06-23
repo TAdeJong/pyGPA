@@ -252,7 +252,7 @@ def invert_u_overlap(us, iters=35, edge=0, mode='nearest'):
 def average_lattice_vector(ks, symmetry=6):
     dt = periodic_average(np.arctan2(*ks.T[::-1]), period=2*np.pi/symmetry)
     r = np.linalg.norm(ks, axis=1).mean()
-    return r * np.array([np.sin(dt), np.cos(dt)])
+    return r * np.array([np.cos(dt), np.sin(dt)])
 
 
 def calc_diff_from_isotropic(ani_ks, symmetry=6):
