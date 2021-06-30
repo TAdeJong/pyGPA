@@ -1,5 +1,5 @@
 import numpy as np
-from hypothesis import given, example
+from hypothesis import given, example, settings
 import hypothesis.strategies as st
 
 import latticegen
@@ -85,12 +85,12 @@ def test_kvecs2Jac(theta, psi, kappa, a):
     #rel_error = np.linalg.norm(krefs2 - ks, axis=1) / r_kl
     assert np.allclose(rel_diffs, 0, atol=1e-3)
 
-
+@settings(max_examples=2000)
 @given(theta=st.floats(1e-1, 45 - 1e-1),#, exclude_min=True),
        psi=st.floats(-90., 90.),
        epsilon=st.floats(1e-5, 0.1, exclude_min=True),
        a=st.floats(1e-3, 1e3, exclude_min=True),
-       xi=st.floats(-180., 180.),
+       xi=st.floats(-90., 90.),
        )
 def test_kerelsky_plus(theta, psi, epsilon, a, xi):
     ks1 = latticegen.generate_ks(a_0_to_r_k(a), xi, kappa=1, psi=psi)
@@ -98,10 +98,29 @@ def test_kerelsky_plus(theta, psi, epsilon, a, xi):
     ks2 = latticegen.generate_ks(r_k2, xi+theta, kappa=kappa, psi=psi)
     props = pe.Kerelsky_plus(ks2[:3] - ks1[:3],
                                nmperpixel=1, a_0=a)
-    assert np.isclose(periodic_difference(np.abs(props[0]), theta, period=60), 0, atol=1e-5)
-    assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-3)
+    assert np.isclose(periodic_difference(np.abs(props[0]), theta, period=60), 0, atol=1e-2)
+    assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-2)
     assert np.isclose(props[2], epsilon, rtol=1e-3, atol=1e-6)
-    assert np.isclose(periodic_difference(props[3], xi, period=360), 0, atol=1e-5)
+    assert np.isclose(periodic_difference(props[3], xi, period=360), 0, atol=1e-2)
+
+#@settings(deadline=None)
+@settings(max_examples=2000)
+@given(theta=st.floats(1e-1, 45 - 1e-1),#, exclude_min=True),
+       psi=st.floats(-90., 90.),
+       epsilon=st.floats(1e-5, 0.1, exclude_min=True),
+       a=st.floats(1e-3, 1e3, exclude_min=True),
+       xi=st.floats(-90., 90.),
+       )
+def test_kerelsky_Jac(theta, psi, epsilon, a, xi):
+    ks1 = latticegen.generate_ks(a_0_to_r_k(a), xi, kappa=1, psi=psi)
+    r_k2, kappa = epsilon_to_kappa(a_0_to_r_k(a), epsilon)
+    ks2 = latticegen.generate_ks(r_k2, xi+theta, kappa=kappa, psi=psi)
+    jacprops = pe.Kerelsky_Jac(ks2[:3] - ks1[:3],
+                               nmperpixel=1, a_0=a)
+    assert np.isclose(periodic_difference(np.abs(jacprops[0]), theta, period=60), 0, atol=1e-2)
+    assert np.isclose(periodic_difference(jacprops[1], psi, period=180), 0, atol=1e-2)
+    assert np.isclose(jacprops[2], epsilon, rtol=1e-3, atol=1e-6)
+    assert np.isclose(periodic_difference(jacprops[3], xi, period=360), 0, atol=1e-2)
 
 
 @given(theta=st.floats(1e-6, 60 - 1e-6, exclude_min=True),

@@ -7,6 +7,7 @@ import dask.array as da
 from moisan2011 import per
 from numba import njit, prange
 from skimage.feature import peak_local_max
+from skimage.restoration import wiener
 
 
 from latticegen.transformations import rotate
@@ -177,7 +178,9 @@ def reconstruct_u_inv(kvecs, b, weights=None, use_only_ks=None):
     return us
 
 
-def reconstruct_u_inv_from_phases(kvecs, phases, weights, weighted_unwrap=True):
+def reconstruct_u_inv_from_phases(kvecs, phases, weights,
+                                  weighted_unwrap=True,
+                                  pre_diff=False):
     """Reconstruct the displacement field `us` from the wrapped phase shifts
     along the kvecs, by first projecting to cartesian vectors and only
     afterwards phase unwrapping.
@@ -199,19 +202,29 @@ def reconstruct_u_inv_from_phases(kvecs, phases, weights, weighted_unwrap=True):
         Canonically the magnitude of the lock-in signals.
     weighted_unwrap : bool, default=True
         Whether to use `weights` for the phase unwrappping.
+    pre_diff : bool, default=False
 
     Returns
     -------
     us : np.array, (2,N,M)
         The reconstructed displacement field.
     """
-    K = 2*np.pi*(kvecs)
-    dbdx = wrapToPi(np.diff(phases, axis=2))
-    dbdy = wrapToPi(np.diff(phases, axis=1))
+    K = 2*np.pi * (kvecs)
+    if pre_diff:
+        dbdx = wrapToPi(phases[...,0])
+        dbdy = wrapToPi(phases[...,1])
+        dbdx = dbdx[:,:,:-1]
+        dbdy = dbdy[:,:-1]
+    else:
+        dbdx = wrapToPi(np.diff(phases, axis=2))
+        dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
     if weighted_unwrap:
-        us = [phase_unwrap_prediff(dudx[i], dudy[i], np.linalg.norm(weights, axis=0), kmax=10) for i in range(2)]
+        us = [phase_unwrap_prediff(dudx[i], dudy[i],
+                                   np.linalg.norm(weights, axis=0),
+                                   kmax=10)
+              for i in range(2)]
     else:
         us = [phase_unwrap_prediff(dudx[i], dudy[i]) for i in range(2)]
     return np.array(us)
@@ -625,7 +638,7 @@ def optwfr2(image, sigma, kx, ky, kw, kstep):
     xx, yy = np.ogrid[0:image.shape[0],
                       0:image.shape[1]]
     g = {'w': np.zeros(image.shape+(2,)),
-         'lockin': np.zeros_like(image, dtype=np.complex),
+         'lockin': np.zeros_like(image, dtype=complex),
          }
     for wx in np.arange(kx-kw, kx+kw, kstep):
         for wy in np.arange(ky-kw, ky+kw, kstep):
@@ -670,7 +683,7 @@ def wfr2_only_lockin_vec(image, sigma, kx, ky, kw, kstep):
     return g
 
 
-def wfr2_grad(image, sigma, kx, ky, kw, kstep):
+def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
     """Adapted version of wfr2.
 
     In addition to returning the used k-vector and lock-in signal,
@@ -686,11 +699,21 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep):
          'lockin': np.zeros_like(image, dtype=np.complex),
          'grad': np.zeros(image.shape+(2,)),
          }
+    if grad == 'diff':
+        def grad_func(phase):
+            dbdx = np.diff(phase, axis=1, append=np.nan)
+            dbdy = np.diff(phase, axis=0, append=np.nan)
+            return np.stack([dbdx, dbdy], axis=-1)
+    elif grad is None:
+        def grad_func(phase):
+            return np.stack(np.gradient(-phase), axis=-1)
+    else:
+        grad_func = grad
     for wx in np.arange(kx-kw, kx+kw, kstep):
         for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
             sf *= np.exp(-2j*np.pi * ((wx-kx)*xx + (wy-ky)*yy))
-            grad = wrapToPi(np.stack(np.gradient(-np.angle(sf)), axis=-1)*2)/4/np.pi
+            grad = wrapToPi(grad_func(-np.angle(sf))*2)/4/np.pi
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t]
             g['w'][t] = np.array([wx, wy])
@@ -700,7 +723,9 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep):
 
 
 def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
-    """Optimized version of wfr2_grad. In addition to returning the
+    """Optimized version of wfr2_grad.
+
+    In addition to returning the
     used k-vector and lock-in signal, return the gradient of the lock-in
     signal as well, for each pixel computed from the values of the surrounding pixels
     of the GPA of the best k-vector. Slightly more accurate, determination of this gradient,
@@ -799,8 +824,23 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
     return klists
 
 
+def gaussian_deconvolve(data, sigma, dr=20, balance=5000):
+    """Deconvolved a stack of images data using a gaussian kernel"""
+    
+    padding =  [(0,0)]*(data.ndim-2)+[(2*dr,2*dr),(2*dr,2*dr)]
+    padded = np.pad(data, padding, 
+                    mode='reflect')
+    kernel = np.fft.fft2(ndi.fourier_gaussian(np.ones(padded.shape[-2:]), sigma=sigma)).real
+    kernel = np.fft.fftshift(kernel.real)
+    kernel = kernel / kernel.sum()
+    deconvolved = [wiener(p, kernel, balance=balance, 
+                          clip=False, is_real=True)[2*dr:-2*dr, 2*dr:-2*dr] for p in padded.reshape((-1,)+padded.shape[-2:])]
+    return np.reshape(np.stack(deconvolved), data.shape)
+
+
 def extract_displacement_field(image, kvecs, sigma=None, kwscale=2.5, ksteps=3,
-                               return_gs=False, wfr_func=optwfr2):
+                               return_gs=False, wfr_func=optwfr2,
+                               deconvolve=False):
     """Top level convenience function, WIP"""
     kw = np.linalg.norm(kvecs, axis=1).mean() / kwscale
     if sigma is None:
@@ -817,6 +857,15 @@ def extract_displacement_field(image, kvecs, sigma=None, kwscale=2.5, ksteps=3,
     mask[dr:-dr, dr:-dr] = 1.
     weights = np.stack([np.abs(g['lockin']) for g in gs]) * (mask+1e-6)
     u = reconstruct_u_inv_from_phases(kvecs, phases, weights)
+    if deconvolve:
+        u = gaussian_deconvolve(u, sigma, dr)
     if return_gs:
         return u, gs
     return u
+
+
+def undistort_image(deformed, u):
+    u_inv = invert_u_overlap(-u)
+    xxh2, yyh2 = np.mgrid[:u.shape[1], :u.shape[2]]
+    reconstructed = ndi.map_coordinates(deformed, [xxh2+u_inv[0], yyh2+u_inv[1]]) 
+    return reconstructed

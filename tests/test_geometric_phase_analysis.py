@@ -14,7 +14,7 @@ from pyGPA.mathtools import periodic_difference, standardize_ks
 def gaussiandeform(size=500):
     S = size // 2
     xp, yp = np.meshgrid(np.arange(-S,S), np.arange(-S,S), indexing='ij')
-    xshift = 0.6*xp*np.exp(-0.5*((xp/(2*S/6))**2+(yp/(2*S/6))**2))
+    xshift = 0.5*xp*np.exp(-0.5*((xp/(2*S/8))**2 + 1.2*(yp/(2*S/6))**2))
     return np.stack((xshift, np.zeros_like(xshift)), axis=0)
 
 # @pytest.fixture
@@ -60,6 +60,19 @@ def test_extract_primary_ks(r_k, theta, psi, kappa):
 
 def test_displacement_field(testset_gaussian, gaussiandeform):
     original, deformed, noise, ori_ks = testset_gaussian
-    u = GPA.extract_displacement_field(deformed+noise, ori_ks[:3])
+    u = -GPA.extract_displacement_field(deformed+noise, ori_ks[:3])
     assert u.shape == gaussiandeform.shape
-    assert np.all(np.abs(u - gaussiandeform)[20:-20,20:-20] < 0.7)
+    print(np.abs(u - gaussiandeform)[:,20:-20,20:-20].max())
+    assert np.all(np.abs(u - gaussiandeform)[:,20:-20,20:-20] < 0.9)
+    u2 = -GPA.extract_displacement_field(deformed, ori_ks[:3], deconvolve=True)
+    assert u2.shape == gaussiandeform.shape
+    print(np.abs(u2 - gaussiandeform)[:,20:-20,20:-20].max())
+    assert np.all(np.abs(u2 - gaussiandeform)[:,20:-20,20:-20] < 0.05)
+    
+def test_reconstruction(testset_gaussian, gaussiandeform):
+    original, deformed, noise, ori_ks = testset_gaussian
+    u_inv = GPA.invert_u_overlap(-gaussiandeform)
+    assert u_inv.shape == gaussiandeform.shape
+    reconstructed = GPA.undistort_image(deformed, gaussiandeform)
+    assert np.all(np.abs(reconstructed - original) / np.abs(original).max() < 0.02)
+    # Add optical flow if feeling fancy.
