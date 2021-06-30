@@ -714,6 +714,7 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
             sf = optGPA(image, (wx, wy), sigma)
             sf *= np.exp(-2j*np.pi * ((wx-kx)*xx + (wy-ky)*yy))
             grad = wrapToPi(grad_func(-np.angle(sf))*2)/4/np.pi
+            #grad = wrapToPi(np.stack(np.gradient(-np.angle(sf)), axis=-1)*2)/4/np.pi
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t]
             g['w'][t] = np.array([wx, wy])
@@ -777,7 +778,8 @@ def wfr4(image, sigma, klist, kref, dk):
     """Iterate over klist, calculate GPA of image for each k, with sigma width
     accept new value if lockin amplitude is larger and new k is maximum 2 lattice positions
     dk away from old k. Only makes sense if klist is ordered.
-    Compensate phase to be relative to kref"""
+    Compensate phase to be relative to kref
+    """
     xx, yy = np.meshgrid(np.arange(image.shape[0]),
                          np.arange(image.shape[1]),
                          indexing='ij')
@@ -825,13 +827,13 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
 
 
 def gaussian_deconvolve(data, sigma, dr=20, balance=5000):
-    """Deconvolved a stack of images data using a gaussian kernel"""
+    """Deconvolved a stack of images data using a Gaussian kernel"""
     
     padding =  [(0,0)]*(data.ndim-2)+[(2*dr,2*dr),(2*dr,2*dr)]
     padded = np.pad(data, padding, 
                     mode='reflect')
     kernel = np.fft.fft2(ndi.fourier_gaussian(np.ones(padded.shape[-2:]), sigma=sigma)).real
-    kernel = np.fft.fftshift(kernel.real)
+    kernel = np.fft.fftshift(kernel)
     kernel = kernel / kernel.sum()
     deconvolved = [wiener(p, kernel, balance=balance, 
                           clip=False, is_real=True)[2*dr:-2*dr, 2*dr:-2*dr] for p in padded.reshape((-1,)+padded.shape[-2:])]
@@ -841,7 +843,9 @@ def gaussian_deconvolve(data, sigma, dr=20, balance=5000):
 def extract_displacement_field(image, kvecs, sigma=None, kwscale=2.5, ksteps=3,
                                return_gs=False, wfr_func=optwfr2,
                                deconvolve=False):
-    """Top level convenience function, WIP"""
+    """Top level convenience function
+
+    WIP: should prediff phases in case of deconvolve?"""
     kw = np.linalg.norm(kvecs, axis=1).mean() / kwscale
     if sigma is None:
         sigma = int(np.ceil(1/np.linalg.norm(kvecs, axis=1).min()))

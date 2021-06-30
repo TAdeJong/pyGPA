@@ -56,7 +56,6 @@ def test_extract_primary_ks(r_k, theta, psi, kappa):
     assert np.all(abs_diffs < 1.5/size)
     #assert np.all(rel_diffs < 0.2)
 
-# TODO: higher order lattice, with gaussian noise.
 
 def test_displacement_field(testset_gaussian, gaussiandeform):
     original, deformed, noise, ori_ks = testset_gaussian
@@ -68,7 +67,8 @@ def test_displacement_field(testset_gaussian, gaussiandeform):
     assert u2.shape == gaussiandeform.shape
     print(np.abs(u2 - gaussiandeform)[:,20:-20,20:-20].max())
     assert np.all(np.abs(u2 - gaussiandeform)[:,20:-20,20:-20] < 0.05)
-    
+
+
 def test_reconstruction(testset_gaussian, gaussiandeform):
     original, deformed, noise, ori_ks = testset_gaussian
     u_inv = GPA.invert_u_overlap(-gaussiandeform)
