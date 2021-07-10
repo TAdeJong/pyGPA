@@ -1,3 +1,4 @@
+"""Miscellaneous mathematical tooling and functions used in pyGPA."""
 import numpy as np
 import scipy.optimize as spo
 
@@ -27,6 +28,13 @@ def lfit_func_mask(x, image, xx, yy, mask):
 
 
 def fit_plane(image, verbose=False):
+    """Fit a plane through `image`
+
+    The plane fitted is of the form $a[0]*x + a[1]*y +a[2]$,
+    where $x$ and $y$ are the indices of image.
+    The fit is done by minimizing `lfit_func()`
+    using least squares.
+    """
     lxx, lyy = np.meshgrid(np.arange(image.shape[0]),
                            np.arange(image.shape[1]),
                            indexing='ij')
@@ -40,6 +48,10 @@ def fit_plane(image, verbose=False):
 
 
 def fit_plane_masked(image, verbose=False, mask=False):
+    """Version of fit_plane accepting a mask array.
+
+    TODO: refactor into single function and test
+    """
     lxx, lyy = np.meshgrid(np.arange(image.shape[0]),
                            np.arange(image.shape[1]),
                            indexing='ij')

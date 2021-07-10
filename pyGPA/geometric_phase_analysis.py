@@ -1,3 +1,4 @@
+"""Functions for geometric phase analysis and Lawler-Fujita type reconstructions"""
 import numpy as np
 import matplotlib.pyplot as plt
 from itertools import combinations
@@ -112,7 +113,21 @@ def myweighed_lstsq(b, K, w):
     return res
 
 
-def iterate_GPA(image, kvecs, sigma, edge=5, iters=3, kmax_iter=25, kmax=200, verbose=False):
+def iterate_GPA(image, kvecs, sigma, edge=5, iters=3,
+                kmax_iter=25, kmax=200, verbose=False):
+    """Iterate GPA procedure, optimizing the used reference vectors
+    to be as close to the extracted average as possible.
+
+    Returns
+    -------
+    prs : array_like
+        Final unwrapped GPA phases
+    w : array_like
+        Final weights corresponding to prs
+    corr : array_like
+        Final correction of the `kvecs`. The k vectors used
+        to obtain the final `prs` and `w` correspond to `kvecs + corr`
+    """
     corr = np.zeros_like(kvecs)
     for i in range(iters + 1):
         rs = np.stack([GPA(image, *ks, sigma=sigma) for ks in kvecs + corr])
@@ -211,10 +226,10 @@ def reconstruct_u_inv_from_phases(kvecs, phases, weights,
     """
     K = 2*np.pi * (kvecs)
     if pre_diff:
-        dbdx = wrapToPi(phases[...,0])
-        dbdy = wrapToPi(phases[...,1])
-        dbdx = dbdx[:,:,:-1]
-        dbdy = dbdy[:,:-1]
+        dbdx = wrapToPi(phases[..., 0])
+        dbdy = wrapToPi(phases[..., 1])
+        dbdx = dbdx[:, :, :-1]
+        dbdy = dbdy[:, :-1]
     else:
         dbdx = wrapToPi(np.diff(phases, axis=2))
         dbdy = wrapToPi(np.diff(phases, axis=1))
@@ -775,10 +790,11 @@ def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
 
 
 def wfr4(image, sigma, klist, kref, dk):
-    """Iterate over klist, calculate GPA of image for each k, with sigma width
-    accept new value if lockin amplitude is larger and new k is maximum 2 lattice positions
-    dk away from old k. Only makes sense if klist is ordered.
-    Compensate phase to be relative to kref
+    """Iterate over `klist`, calculate GPA of image for each k, with sigma width
+
+    Accepts new value if lockin amplitude is larger and new k is maximum 2 lattice positions
+    dk away from old k. Only makes sense if `klist` is ordered.
+    Compensate phase to be relative to `kref`
     """
     xx, yy = np.meshgrid(np.arange(image.shape[0]),
                          np.arange(image.shape[1]),
@@ -828,14 +844,14 @@ def generate_klists(pks, dk=None, kmax=1.9, kmin=0.2, sort_list=False):
 
 def gaussian_deconvolve(data, sigma, dr=20, balance=5000):
     """Deconvolved a stack of images data using a Gaussian kernel"""
-    
-    padding =  [(0,0)]*(data.ndim-2)+[(2*dr,2*dr),(2*dr,2*dr)]
-    padded = np.pad(data, padding, 
+
+    padding = [(0, 0)]*(data.ndim-2)+[(2*dr, 2*dr), (2*dr, 2*dr)]
+    padded = np.pad(data, padding,
                     mode='reflect')
     kernel = np.fft.fft2(ndi.fourier_gaussian(np.ones(padded.shape[-2:]), sigma=sigma)).real
     kernel = np.fft.fftshift(kernel)
     kernel = kernel / kernel.sum()
-    deconvolved = [wiener(p, kernel, balance=balance, 
+    deconvolved = [wiener(p, kernel, balance=balance,
                           clip=False, is_real=True)[2*dr:-2*dr, 2*dr:-2*dr] for p in padded.reshape((-1,)+padded.shape[-2:])]
     return np.reshape(np.stack(deconvolved), data.shape)
 
@@ -869,7 +885,42 @@ def extract_displacement_field(image, kvecs, sigma=None, kwscale=2.5, ksteps=3,
 
 
 def undistort_image(deformed, u):
+    """Reconstruct an undistorted image
+
+    From a deformed image and a displacement field `u`, reconstruct
+    an image with the deformation removed.
+    This function will invert `u` to reconstruct the image.
+
+    `u` can be extracted using `extract_displacement_field()`,
+    or either a GPA function or an adaptive `wfr` style function
+    and a `reconstruct_u_inv` style function.
+
+    Parameters
+    ----------
+    deformed : (N,M) array_like
+        deformed image
+    u : (2,N,M) array_like
+        extracted displacement field
+
+    Returns
+    -------
+    reconstructed : (N,M) array_like
+        reconstructed image
+
+    Notes
+    -----
+    The combined process is also known as "Lawler-Fujita" in STM [1]_,
+    although the inversion of `u` is typically replaced by a simple multiplication
+    by -1 as distortions in STM are typically small.
+
+    References
+    ----------
+    .. [1] Lawler, M., Fujita, K., Lee, J. et al. Intra-unit-cell electronic nematicity
+        of the high-Tc copper-oxide pseudogap states. Nature 466, 347–351 (2010).
+        https://doi.org/10.1038/nature09169
+
+    """
     u_inv = invert_u_overlap(-u)
     xxh2, yyh2 = np.mgrid[:u.shape[1], :u.shape[2]]
-    reconstructed = ndi.map_coordinates(deformed, [xxh2+u_inv[0], yyh2+u_inv[1]]) 
+    reconstructed = ndi.map_coordinates(deformed, [xxh2+u_inv[0], yyh2+u_inv[1]])
     return reconstructed

@@ -85,7 +85,7 @@ def test_kvecs2Jac(theta, psi, kappa, a):
     #rel_error = np.linalg.norm(krefs2 - ks, axis=1) / r_kl
     assert np.allclose(rel_diffs, 0, atol=1e-3)
 
-@settings(max_examples=2000)
+
 @given(theta=st.floats(1e-1, 45 - 1e-1),#, exclude_min=True),
        psi=st.floats(-90., 90.),
        epsilon=st.floats(1e-5, 0.1, exclude_min=True),
@@ -104,8 +104,7 @@ def test_kerelsky_plus(theta, psi, epsilon, a, xi):
     assert np.isclose(periodic_difference(props[3], xi, period=360), 0, atol=1e-2)
 
 #@settings(deadline=None)
-@settings(max_examples=2000)
-@given(theta=st.floats(1e-1, 45 - 1e-1),#, exclude_min=True),
+@given(theta=st.floats(1e-1, 45 - 1e-1),
        psi=st.floats(-90., 90.),
        epsilon=st.floats(1e-5, 0.1, exclude_min=True),
        a=st.floats(1e-3, 1e3, exclude_min=True),

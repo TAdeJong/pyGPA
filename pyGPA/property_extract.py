@@ -46,7 +46,7 @@ def phases2J(kvecs, phases, weights, nmperpixel):
     #dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
-    #suspicious minus sign
+    # suspicious minus sign
     J = - np.stack([dudx, dudy], axis=-1)
     J = np.moveaxis(J, 0, -2)
     return J
@@ -66,7 +66,7 @@ def phasegradient2Jac(kvecs, grads, weights, nmperpixel):
     return Jac
 
 
-def phasegradient2J(kvecs, grads, weights, nmperpixel, 
+def phasegradient2J(kvecs, grads, weights, nmperpixel,
                     iso_ref=True,
                     sort=0):
     """Calculate J directly from phase gradients.
@@ -79,7 +79,7 @@ def phasegradient2J(kvecs, grads, weights, nmperpixel,
     angles = np.arctan2(*kvecs.T[::-1])
     if sort == 0:
         lkvecs = kvecs
-        order=np.arange(3)
+        order = np.arange(3)
     else:
         order = np.argsort(sort*periodic_difference(angles, periodic_average(angles)))
         lkvecs = kvecs[order]
@@ -87,7 +87,7 @@ def phasegradient2J(kvecs, grads, weights, nmperpixel,
         dks = calc_diff_from_isotropic(lkvecs)
         K = 2*np.pi*(lkvecs + dks)
         iso_grads = np.stack([g - 2*np.pi*dk
-                          for g, dk in zip(grads[order], dks)])
+                              for g, dk in zip(grads[order], dks)])
         iso_grads = wrapToPi(iso_grads)
     else:
         K = 2*np.pi * kvecs
@@ -104,8 +104,8 @@ def phasegradient2J(kvecs, grads, weights, nmperpixel,
 def kvecs2J(ks, standardize=True):
     """Convert given ks to a J matrix
     with respect to the isotropic kvectors as
-    given by get_initial_props(ks). 
-    
+    given by get_initial_props(ks).
+
     Parameters
     ----------
     ks : Nx2 array
@@ -127,6 +127,7 @@ def kvecs2J(ks, standardize=True):
     J = np.linalg.lstsq(krefs, -dks, rcond=None)[0]
     # This transpose is needed for tests to work? Checkout if needed for phases2J, u2J and phasegradient2J too...
     return J.T
+
 
 def kvecs2Jac(ks, standardize=True):
     J = kvecs2J(ks, standardize=standardize)
@@ -154,7 +155,7 @@ def props_from_Jac(Jac, refangle=0., refscale=1):
     #u = np.sign(np.diag(v)) * u
     #v = (np.sign(np.diag(v)) * v)
     #u_p = u @ v
-    signs = np.sign(u[...,None,[0,1],[0,1]])
+    signs = np.sign(u[..., None, [0, 1], [0, 1]])
     #v = (np.sign(np.diag(u))*v)
     #u = (np.sign(np.diag(u))*u).T
     v = signs*v
@@ -186,29 +187,31 @@ def phys_props_from_Jac(Jac, refangle=0., refscale=1, poisson_ratio=0.16):
         local heterostrain magnitude
     """
     u, s, v = np.linalg.svd(Jac)
-    signs = np.sign(u[...,None,[0,1],[0,1]])
+    signs = np.sign(u[..., None, [0, 1], [0, 1]])
     v = signs*v
     u = np.swapaxes(signs*u, -1, -2)
     u_p = np.swapaxes(u @ v, -1, -2)
     angle = np.rad2deg(np.arctan2(u_p[..., 1, 0], u_p[..., 0, 0]))
     aniangle = np.rad2deg(np.arctan2(u[..., 1, 0], u[..., 0, 0])) % 180
-    
+
     delta = poisson_ratio
     epsilon = (s[..., 0] - s[..., 1]) / (s[..., 0] + delta * s[..., 1])
     alpha = s[..., 0] / (1+epsilon)
     return np.array([angle + refangle, aniangle, alpha * refscale, epsilon])
 
+
 def props_from_J(J, refangle=0., refscale=1):
     return props_from_Jac(J + np.eye(2), refangle=refangle, refscale=refscale)
+
 
 def props_from_J_old(J):
     """Calculate properties of a lattice
     from J corresponding to u of that lattice"""
-    u,s,v = np.linalg.svd(J)
+    u, s, v = np.linalg.svd(J)
     angle = (u @ v)
-    moireangle = np.rad2deg(np.arctan2(angle[...,1,0], angle[...,0,0]))
-    aniangle = np.rad2deg(np.arctan2(v[...,1,0], v[...,0,0])) % 180
-    return [moireangle, aniangle, np.sqrt(s[...,0]* s[...,1]), s[...,0] / s[...,1]]
+    moireangle = np.rad2deg(np.arctan2(angle[..., 1, 0], angle[..., 0, 0]))
+    aniangle = np.rad2deg(np.arctan2(v[..., 1, 0], v[..., 0, 0])) % 180
+    return [moireangle, aniangle, np.sqrt(s[..., 0] * s[..., 1]), s[..., 0] / s[..., 1]]
 
 
 def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
@@ -225,7 +228,7 @@ def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     - local anisotropy magnitude.
     """
 #     dks = calc_diff_from_isotropic(kvecs)
-#     theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1), 
+#     theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1),
 #                         nmperpixel=nmperpixel).mean()
 #     xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[..., 1],
 #                                     (kvecs+dks)[..., 0])) % 60).mean()
@@ -267,7 +270,6 @@ def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
     return props
 
 
-
 def calc_eps_from_phasegradient(kvecs, grads, weights, nmperpixel):
     """Calculate local lower bound of strain
     assuming uniaxial strain of a graphene lattice
@@ -287,6 +289,7 @@ def Jac_2_Jac_diff(Jac, theta_iso):
     J_diff = J_2_J_diff(Jac - np.eye(2), theta_iso)
     Jac_diff = (np.eye(2) + J_diff)
     return Jac_diff
+
 
 def J_2_J_diff(J, theta_iso):
     t = np.deg2rad(theta_iso)
@@ -347,8 +350,8 @@ def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel, a_0=0.246)
 
 
 def calc_props_from_kvecs4(ks,
-                          decomposition=None,
-                          standardize=False):
+                           decomposition=None,
+                           standardize=False):
     """Calculate properties of a lattice directly from `ks`.
 
     Parameters
@@ -370,7 +373,7 @@ def calc_props_from_kvecs4(ks,
     """
 
     Jac = kvecs2Jac(ks)
-    r_k, theta_0, symmetry = get_initial_props(ks, 
+    r_k, theta_0, symmetry = get_initial_props(ks,
                                                standardize=standardize)
     if decomposition == 'physical':
         props = phys_props_from_Jac(Jac)
@@ -380,6 +383,7 @@ def calc_props_from_kvecs4(ks,
     props[1] = props[1]  # + theta_0
     props[2] = props[2] * r_k
     return props
+
 
 def calc_moire_props_from_kvecs(ks, nmperpixel=3.7, a_0=0.246,
                                 decomposition='physical'):
@@ -406,7 +410,8 @@ def calc_moire_props_from_kvecs(ks, nmperpixel=3.7, a_0=0.246,
 
     return props
 
-def moire_props_from_phasegradient(kvecs, grads, weights, nmperpixel, 
+
+def moire_props_from_phasegradient(kvecs, grads, weights, nmperpixel,
                                    a_0=0.246, decomposition=None):
     """Calculate properties directly from phase gradients.
 
@@ -425,6 +430,7 @@ def moire_props_from_phasegradient(kvecs, grads, weights, nmperpixel,
 
     return props
 
+
 def moire_props_from_Jac(kvecs, Jac, nmperpixel, a_0=0.246, decomposition=None):
     r_k, theta_0, symmetry = get_initial_props(kvecs)
     theta_iso = f2angle(r_k, nmperpixel=nmperpixel, a_0=a_0)
@@ -434,10 +440,11 @@ def moire_props_from_Jac(kvecs, Jac, nmperpixel, a_0=0.246, decomposition=None):
     else:
         props = props_from_Jac(Jac_moire)
     props[0] = props[0] + theta_iso
-    props[1] = props[1] - theta_iso/2#- ((90 + theta_0) % 60)
-    
+    props[1] = props[1] - theta_iso/2  # - ((90 + theta_0) % 60)
+
     #props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
     return props
+
 
 def twist_matrix(angle):
     """Create a twist matrix
@@ -458,9 +465,9 @@ def twist_matrix(angle):
     """
     ha = np.deg2rad(angle/2)
     B0 = np.array([[np.cos(ha), -np.sin(ha)],
-                     [np.sin(ha), np.cos(ha)]])
+                   [np.sin(ha), np.cos(ha)]])
     B0 = B0 - np.array([[np.cos(-ha), -np.sin(-ha)],
-                     [np.sin(-ha), np.cos(-ha)]])
+                        [np.sin(-ha), np.cos(-ha)]])
     return B0
 
 
@@ -477,14 +484,14 @@ def get_initial_props(ks, standardize=False):
     if standardize:
         kvecs = standardize_ks(ks)
     else:
-        kvecs = ks 
+        kvecs = ks
     symmetry = 2 * len(kvecs)
     r_k = np.linalg.norm(kvecs, axis=1).mean()
     theta_0 = np.rad2deg(periodic_average(np.arctan2(*(kvecs).T[::-1]),
                                           2*np.pi / symmetry)
                          )
     hexa = np.arange(-180, 180, 60)
-    diffind = np.argmin(np.abs(theta_0 + hexa - np.rad2deg(np.arctan2(*(kvecs).T[::-1,0]))))
+    diffind = np.argmin(np.abs(theta_0 + hexa - np.rad2deg(np.arctan2(*(kvecs).T[::-1, 0]))))
     return r_k, theta_0 + hexa[diffind], symmetry
 
 
@@ -570,7 +577,6 @@ def moire_amplitudes(theta, psi, epsilon, a_0=0.246):
     return np.linalg.norm(ks1 - ks2, axis=1)
 
 
-
 def Kerelsky(kvecs, nmperpixel=1., a_0=0.246):
     knorms = np.linalg.norm(kvecs, axis=1) * nmperpixel
     res = least_squares(lambda x: (moire_amplitudes(*x, a_0) - knorms)/knorms.mean(), [0.01, 0., 0.])
@@ -583,6 +589,7 @@ def Kerelsky(kvecs, nmperpixel=1., a_0=0.246):
     else:
         params = np.full(4, np.nan)
     return params
+
 
 def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
                   reference=None,
@@ -629,6 +636,7 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
         lkvecs = kvecs/r_k0
     else:
         lkvecs = (kvecs/r_k0)[np.argsort(sort*periodic_difference(angles, periodic_average(angles)))]
+
     def moire_diffs(args):
         theta, psi, epsilon, xi = args
         ks1 = latticegen.generate_ks(1, xi)[:3]
@@ -636,11 +644,11 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
         V = latticegen.transformations.rotation_matrix(np.deg2rad(psi))
         D = latticegen.transformations.strain_matrix(epsilon)
         ks2 = latticegen.transformations.apply_transformation_matrix(ks1,  V.T @ D @ V @ W)
-        return np.ravel(lkvecs / nmperpixel - (ks2 - ks1)) *1000#/ knorm
-    bounds = np.full((2,4), np.inf)
+        return np.ravel(lkvecs / nmperpixel - (ks2 - ks1)) * 1000  # / knorm
+    bounds = np.full((2, 4), np.inf)
     bounds[0, :] = -np.inf
     bounds[0, [0, 2]] = 0
-    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0,1], lkvecs[0,0]))%360]
+    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0, 1], lkvecs[0, 0])) % 360]
     res = least_squares(moire_diffs, est, bounds=bounds)
     if debug:
         print(est, res, sep='\n')
@@ -660,9 +668,9 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
     return params
 
 
-
 nb_rot_mat = njit(latticegen.transformations.rotation_matrix)
 nb_strain_mat = njit(latticegen.transformations.strain_matrix)
+
 
 @njit(cache=True)
 def Jac_fit_diff(x, JacA0):
@@ -696,7 +704,7 @@ def Kerelsky_Jac(kvecs, nmperpixel=1., a_0=0.246,
         in nm per unit cell
     reference : None or 'symmetric'
     debug : boolean
-    
+
     Returns
     -------
     theta : float
@@ -725,10 +733,10 @@ def Kerelsky_Jac(kvecs, nmperpixel=1., a_0=0.246,
     k0s = latticegen.generate_ks(1, 0)[:3]
     # k0s @ JacA0.T = kvecs
     JacA0 = np.linalg.lstsq(k0s, lkvecs, rcond=None)[0].T
-    bounds = np.full((2,4), np.inf)
-    bounds[0,:] = -np.inf
-    bounds[0,[0,2]] = 0
-    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0,1], lkvecs[0,0]))%360]
+    bounds = np.full((2, 4), np.inf)
+    bounds[0, :] = -np.inf
+    bounds[0, [0, 2]] = 0
+    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0, 1], lkvecs[0, 0])) % 360]
     res = least_squares(Jac_fit_diff, est, bounds=bounds, args=(JacA0,))
     if res.cost > 1e-20:
         est[1] = 90.
@@ -747,10 +755,10 @@ def Kerelsky_Jac(kvecs, nmperpixel=1., a_0=0.246,
 
 
 def Kerelsky_J(J, kvecs, nmperpixel=1., a_0=0.246,
-                 reference=None,
-                 debug=False,
-                 sort=0,
-              lq_kwargs={'max_nfev': 50}):
+               reference=None,
+               debug=False,
+               sort=0,
+               lq_kwargs={'max_nfev': 50}):
     """From JacA0, compute properties using Kerelsky et al.
 
     Here, JacA0 is the matrix such that kvecs = k0s @ JacA0.T
@@ -803,11 +811,11 @@ def Kerelsky_J(J, kvecs, nmperpixel=1., a_0=0.246,
     # k0s @ JacA0.T = kvecs
     A0 = np.linalg.lstsq(k0s, lkvecs, rcond=None)[0].T
     JacA0 = A0 + A0 @ J
-    bounds = np.full((2,4), np.inf)
-    bounds[0,:] = -np.inf
-    bounds[0,[0,2]] = 0
-    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0,1], lkvecs[0,0]))%360]
-    res = least_squares(Jac_fit_diff, est, bounds=bounds, 
+    bounds = np.full((2, 4), np.inf)
+    bounds[0, :] = -np.inf
+    bounds[0, [0, 2]] = 0
+    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0, 1], lkvecs[0, 0])) % 360]
+    res = least_squares(Jac_fit_diff, est, bounds=bounds,
                         args=(A0,), **lq_kwargs)
     if res.cost > 1e-20:
         est[1] = 90.
@@ -823,19 +831,19 @@ def Kerelsky_J(J, kvecs, nmperpixel=1., a_0=0.246,
         refest = np.full(4, np.nan)
         return refest
 
-    X = iterate_J_leastsq(da.asarray(JacA0, chunks=(1,-1,2,2)), refest, lq_kwargs)
+    X = iterate_J_leastsq(da.asarray(JacA0, chunks=(1, -1, 2, 2)), refest, lq_kwargs)
     return X, refest
 
 
 @da.as_gufunc(signature="(i,j),(4),()->(4)", output_dtypes=float, vectorize=True)
 def iterate_J_leastsq(JacA0, refest, lq_kwargs):
-    bounds = np.full((2,4), np.inf)
-    bounds[0,:] = -np.inf
-    bounds[0,[0,2]] = 0
-    res = least_squares(Jac_fit_diff, refest, 
-                                   bounds=bounds, args=(JacA0,), **lq_kwargs)
+    bounds = np.full((2, 4), np.inf)
+    bounds[0, :] = -np.inf
+    bounds[0, [0, 2]] = 0
+    res = least_squares(Jac_fit_diff, refest,
+                        bounds=bounds, args=(JacA0,), **lq_kwargs)
     if res.cost > 1e-5:
-        res2 = least_squares(Jac_fit_diff, refest+ np.array([0,90,0,0]), 
+        res2 = least_squares(Jac_fit_diff, refest + np.array([0, 90, 0, 0]),
                              bounds=bounds, args=(JacA0,), **lq_kwargs)
         if res2.cost < res.cost:
             res = res2

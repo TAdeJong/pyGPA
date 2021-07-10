@@ -75,4 +75,4 @@ def test_reconstruction(testset_gaussian, gaussiandeform):
     assert u_inv.shape == gaussiandeform.shape
     reconstructed = GPA.undistort_image(deformed, gaussiandeform)
     assert np.all(np.abs(reconstructed - original) / np.abs(original).max() < 0.02)
-    # Add optical flow if feeling fancy.
+    # Add optical flow if feeling fancy, but parameters are hard to optimize.

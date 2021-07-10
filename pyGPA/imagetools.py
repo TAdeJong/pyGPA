@@ -1,3 +1,13 @@
+"""Miscellaneous tooling and functions to operate on images used in pyGPA.
+
+Includes:
+- some color handling
+- FFT handling (mostly plotting using matplotlib)
+- np.nan trimming of images, both conservative and aggressive
+- some filtering in the form of Difference of gaussian homogenization supporting masked values.
+
+"""
+
 import collections
 
 import numpy as np
@@ -147,7 +157,8 @@ def trim_nans2(image, return_lims=False):
 def generate_mask(dataset, mask_value, r=20):
     """Generate a boolean mask array covering everything that in
     any image in dataset contains mask_value. Perform an
-    erosion with radius r to create a safety margin."""
+    erosion with radius r to create a safety margin.
+    """
     mask = ~np.any(dataset == mask_value, axis=0).compute()
     mask = ndi.binary_erosion(mask, structure=disk(r))
     return mask
@@ -158,6 +169,6 @@ def to_KovesiRGB(image):
     by P. Kovesi in http://arxiv.org/abs/1509.03700
     """
     A = np.array([[0.90, 0.17, 0.00],
-                 [0.00, 0.50, 0.00],
-                 [0.10, 0.33, 1.00]])
+                  [0.00, 0.50, 0.00],
+                  [0.10, 0.33, 1.00]])
     return np.dot(image, A)
