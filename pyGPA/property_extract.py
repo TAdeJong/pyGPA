@@ -135,9 +135,18 @@ def kvecs2Jac(ks, standardize=True):
     return Jac
 
 
-def props_from_Jac(Jac, refangle=0., refscale=1):
-    """Calculate properties of a lattice
-    from transformation Jac
+def props_from_Jac(Jac, refangle=0., refscale=1., diff=False):
+    """Calculate properties of a lattice from Jacobian
+
+    Parameters
+    ----------
+    Jac : ndarray, (NxMx)2x2
+        Jacobian of the transformation
+    refangle : float, default=0.
+    refscale : float, default=1.
+    diff : Bool, default=False
+        Whether the given Jacobian
+        corresponds to diffraction (as opposed to realspace).
 
     Returns
     -------
@@ -150,6 +159,7 @@ def props_from_Jac(Jac, refangle=0., refscale=1):
         local unit cell scaling factor before anisotropy
     kappa : float or ndarray
         local anisotropy magnitude
+
     """
     u, s, v = np.linalg.svd(Jac)
     #u = np.sign(np.diag(v)) * u
@@ -163,16 +173,24 @@ def props_from_Jac(Jac, refangle=0., refscale=1):
     u_p = np.swapaxes(u @ v, -1, -2)
     #u_p = (u @ v).T
     angle = np.rad2deg(np.arctan2(u_p[..., 1, 0], u_p[..., 0, 0]))
-    aniangle = np.rad2deg(np.arctan2(u[..., 1, 0], u[..., 0, 0])) % 180
-    alpha = s[..., 1]
+    aniangle = np.rad2deg(np.arctan2(u[..., 1, 0], u[..., 0, 0]))
+    if diff:
+        aniangle += 90
+        alpha = s[..., 0]
+    else:
+        alpha = s[..., 1]
     kappa = s[..., 0] / s[..., 1]
-    # return np.array([angle + refangle, aniangle + refangle, alpha * refscale, kappa])
+    aniangle = aniangle % 180
+
     return np.array([angle + refangle, aniangle, alpha * refscale, kappa])
 
 
-def phys_props_from_Jac(Jac, refangle=0., refscale=1, poisson_ratio=0.16):
+def phys_props_from_Jac(Jac, refangle=0., refscale=1,
+                        diff=False, poisson_ratio=0.16):
     """Calculate physical properties of a lattice
-    from transformation Jac
+    from Jacobian.
+
+    TODO: Untested.
 
     Returns
     -------
@@ -192,11 +210,17 @@ def phys_props_from_Jac(Jac, refangle=0., refscale=1, poisson_ratio=0.16):
     u = np.swapaxes(signs*u, -1, -2)
     u_p = np.swapaxes(u @ v, -1, -2)
     angle = np.rad2deg(np.arctan2(u_p[..., 1, 0], u_p[..., 0, 0]))
-    aniangle = np.rad2deg(np.arctan2(u[..., 1, 0], u[..., 0, 0])) % 180
+    aniangle = np.rad2deg(np.arctan2(u[..., 1, 0], u[..., 0, 0]))
 
     delta = poisson_ratio
     epsilon = (s[..., 0] - s[..., 1]) / (s[..., 0] + delta * s[..., 1])
-    alpha = s[..., 0] / (1+epsilon)
+    if diff:
+        aniangle += 90
+        alpha = s[..., 0] / (1 + epsilon)
+    else:
+        alpha = s[..., 1] * (1 + epsilon)
+    aniangle = aniangle % 180
+
     return np.array([angle + refangle, aniangle, alpha * refscale, epsilon])
 
 
@@ -227,19 +251,10 @@ def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
     - local twist angle assuming a graphene lattice (TODO: make flexible)
     - local anisotropy magnitude.
     """
-#     dks = calc_diff_from_isotropic(kvecs)
-#     theta_iso = f2angle(np.linalg.norm(kvecs + dks, axis=1),
-#                         nmperpixel=nmperpixel).mean()
-#     xi_iso = (np.rad2deg(np.arctan2((kvecs+dks)[..., 1],
-#                                     (kvecs+dks)[..., 0])) % 60).mean()
-#     J = phasegradient2J(kvecs, grads, weights, nmperpixel)
-#     props = np.array(props_from_J(J))
-#     props[2] = props[2] * theta_iso
-#     props[0] = props[0] + xi_iso
+
     Jac = phasegradient2Jac(kvecs, grads, weights, nmperpixel)
     r_k, theta_0, symmetry = get_initial_props(kvecs)
     theta_iso = f2angle(r_k, nmperpixel=nmperpixel)
-    print("theta_iso", theta_iso)
     props = props_from_Jac(Jac)
     props[0] = props[0] + theta_0
     props[1] = props[1]  # + theta_0
@@ -376,9 +391,9 @@ def calc_props_from_kvecs4(ks,
     r_k, theta_0, symmetry = get_initial_props(ks,
                                                standardize=standardize)
     if decomposition == 'physical':
-        props = phys_props_from_Jac(Jac)
+        props = phys_props_from_Jac(Jac, diff=True)
     else:
-        props = props_from_Jac(Jac)
+        props = props_from_Jac(Jac, diff=True)
     props[0] = props[0] + theta_0
     props[1] = props[1]  # + theta_0
     props[2] = props[2] * r_k
@@ -406,7 +421,8 @@ def calc_moire_props_from_kvecs(ks, nmperpixel=3.7, a_0=0.246,
     """
 
     Jac = kvecs2Jac(ks, standardize=False)
-    props = moire_props_from_Jac(ks, Jac, nmperpixel, a_0, decomposition)
+    props = moire_props_from_Jac(ks, Jac, nmperpixel,
+                                 a_0, decomposition)
 
     return props
 
@@ -611,6 +627,8 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
         in nm per unit cell
     reference : None or 'symmetric'
     debug : boolean
+    sort : {-1, 0, 1}
+        How to sort `kvecs`. 0 corresponds to no sort.
 
     Returns
     -------
@@ -632,10 +650,11 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
     knorm = np.linalg.norm(kvecs, axis=1).mean() / nmperpixel
     angles = np.arctan2(*kvecs.T[::-1])
     r_k0 = latticegen.transformations.a_0_to_r_k(a_0)
-    if sort == 0:
-        lkvecs = kvecs/r_k0
-    else:
-        lkvecs = (kvecs/r_k0)[np.argsort(sort*periodic_difference(angles, periodic_average(angles)))]
+    lkvecs = kvecs / r_k0
+    if sort != 0:
+        lkvecs = lkvecs[np.argsort(sort * periodic_difference(angles,
+                                                              periodic_average(angles)))
+                        ]
 
     def moire_diffs(args):
         theta, psi, epsilon, xi = args
@@ -644,11 +663,11 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
         V = latticegen.transformations.rotation_matrix(np.deg2rad(psi))
         D = latticegen.transformations.strain_matrix(epsilon)
         ks2 = latticegen.transformations.apply_transformation_matrix(ks1,  V.T @ D @ V @ W)
-        return np.ravel(lkvecs / nmperpixel - (ks2 - ks1)) * 1000  # / knorm
+        return np.ravel(lkvecs / nmperpixel - (ks2 - ks1)) * 1000
     bounds = np.full((2, 4), np.inf)
     bounds[0, :] = -np.inf
     bounds[0, [0, 2]] = 0
-    est = [.01, 0., 0., np.rad2deg(np.arctan2(lkvecs[0, 1], lkvecs[0, 0])) % 360]
+    est = [.01, 0., 0., (np.rad2deg(np.arctan2(lkvecs[0, 1], lkvecs[0, 0])) - 90) % 360]
     res = least_squares(moire_diffs, est, bounds=bounds)
     if debug:
         print(est, res, sep='\n')
@@ -704,6 +723,8 @@ def Kerelsky_Jac(kvecs, nmperpixel=1., a_0=0.246,
         in nm per unit cell
     reference : None or 'symmetric'
     debug : boolean
+    sort : {-1, 0, 1}
+        How to sort `kvecs`. 0 corresponds to no sort.
 
     Returns
     -------
@@ -725,10 +746,11 @@ def Kerelsky_Jac(kvecs, nmperpixel=1., a_0=0.246,
     knorm = np.linalg.norm(kvecs, axis=1).mean() / nmperpixel
     angles = np.arctan2(*kvecs.T[::-1])
     r_k0 = latticegen.transformations.a_0_to_r_k(a_0) * nmperpixel
-    if sort == 0:
-        lkvecs = kvecs/r_k0
-    else:
-        lkvecs = (kvecs/r_k0)[np.argsort(sort*periodic_difference(angles, periodic_average(angles)))]
+    lkvecs = kvecs / r_k0
+    if sort != 0:
+        lkvecs = lkvecs[np.argsort(sort * periodic_difference(angles,
+                                                              periodic_average(angles)))
+                        ]
 
     k0s = latticegen.generate_ks(1, 0)[:3]
     # k0s @ JacA0.T = kvecs
@@ -778,6 +800,8 @@ def Kerelsky_J(J, kvecs, nmperpixel=1., a_0=0.246,
         in nm per unit cell
     reference : None or 'symmetric'
     debug : boolean
+    sort : {-1, 0, 1}
+        How to sort `kvecs`. 0 corresponds to no sort.
     lq_kwargs : dict
         extra keyword arguments to pass to `least_squares`
 
@@ -802,13 +826,14 @@ def Kerelsky_J(J, kvecs, nmperpixel=1., a_0=0.246,
     knorm = np.linalg.norm(kvecs, axis=1).mean() / nmperpixel
     angles = np.arctan2(*kvecs.T[::-1])
     r_k0 = latticegen.transformations.a_0_to_r_k(a_0) * nmperpixel
-    if sort == 0:
-        lkvecs = kvecs/r_k0
-    else:
-        lkvecs = (kvecs/r_k0)[np.argsort(sort*periodic_difference(angles, periodic_average(angles)))]
+    lkvecs = kvecs / r_k0
+    if sort != 0:
+        lkvecs = lkvecs[np.argsort(sort * periodic_difference(angles,
+                                                              periodic_average(angles)))
+                        ]
 
     k0s = latticegen.generate_ks(1, 0)[:3]
-    # k0s @ JacA0.T = kvecs
+    # Solve k0s @ JacA0.T = kvecs
     A0 = np.linalg.lstsq(k0s, lkvecs, rcond=None)[0].T
     JacA0 = A0 + A0 @ J
     bounds = np.full((2, 4), np.inf)
@@ -837,6 +862,14 @@ def Kerelsky_J(J, kvecs, nmperpixel=1., a_0=0.246,
 
 @da.as_gufunc(signature="(i,j),(4),()->(4)", output_dtypes=float, vectorize=True)
 def iterate_J_leastsq(JacA0, refest, lq_kwargs):
+    """Perform leastsq on all dimensions of JacA0 except for the
+    last two, which are assumed to be (2,2)
+
+    See Also
+    --------
+    Kerelsky_J
+
+    """
     bounds = np.full((2, 4), np.inf)
     bounds[0, :] = -np.inf
     bounds[0, [0, 2]] = 0

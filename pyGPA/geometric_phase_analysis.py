@@ -498,7 +498,7 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(2, 200)
         axlim = kxs[min(center[0] + pix_norm_range[1], len(kxs)-1)]
         ax[0].set_xlim(-axlim, axlim)
         ax[0].set_ylim(-axlim, axlim)
-        ax[1].imshow(image.T)
+        ax[1].imshow(image.T, origin='lower')
         for r in [kxs[center[0]+s] for s in pix_norm_range]:
             circle = plt.Circle((0, 0), r/NMPERPIXEL,
                                 edgecolor='w', fill=False, alpha=0.6)

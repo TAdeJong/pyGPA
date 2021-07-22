@@ -34,6 +34,7 @@ def testset_gaussian(gaussiandeform):
     deformed = latticegen.hexlattice_gen(r_k, xi0, order, S, kappa=kappa, psi=psi,
                                          shift=gaussiandeform
                                          ).compute()
+    # TODO: fix numpy random seed in a way compatible with both new and old numpy random interface
     noise = ndi.filters.gaussian_filter(10*np.random.normal(size=deformed.shape), sigma=0.5)
     ori_ks = latticegen.generate_ks(r_k, xi0, kappa=kappa, psi=psi)[:-1]
     return original, deformed, noise, ori_ks
@@ -42,7 +43,7 @@ def testset_gaussian(gaussiandeform):
 @given(theta=st.floats(0., 60,),
        psi=st.floats(-90., 90.),
        kappa=st.floats(1.+1e-7, 2, exclude_min=True),
-       r_k=st.floats(0.015, 0.24),
+       r_k=st.floats(0.03, 0.24),
        )
 def test_extract_primary_ks(r_k, theta, psi, kappa):
     size = 256
