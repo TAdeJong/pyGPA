@@ -1,5 +1,9 @@
 # pyGPA
 
+[![CI](https://github.com/TAdeJong/pyGPA/actions/workflows/ci.yaml/badge.svg)](https://github.com/TAdeJong/pyGPA/actions/workflows/ci.yaml)
+![Codecov](https://img.shields.io/codecov/c/gh/TAdeJong/pyGPA)
+
+
 A python package collecting an assortment of Geometric Phase Analysis algorithms and tools to analyse regular (moiré) lattices. 
 
 Geometric Phase Analysis enables the extraction of a _displacement field_ from a distorted lattice, by comparing to reference waves. As such, it is a spatial variant of lock-in amplification. This package implements several specializations of GPA. In particular: 
@@ -32,6 +36,8 @@ $ pytest
 https://github.com/TAdeJong/moire-lattice-generator
 
 [T. Benschop, T.A. de Jong _et al._ Phys. Rev. Research *3*, 013153](https://doi.org/10.1103/PhysRevResearch.3.013153) (Code not actually used for that work, but builds upon the ideas)
+
+[T.A. de Jong _et al._,Imaging moiré deformation and dynamics in twisted bilayer graphene, arXiv:2107.14716](https://arxiv.org/abs/2107.14716)
 
 https://github.com/TAdeJong/weighed_phase_unwrap
 
