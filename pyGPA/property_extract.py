@@ -43,7 +43,7 @@ def phases2J(kvecs, phases, weights, nmperpixel):
     """
     K = 2*np.pi*(kvecs)
     dbdx, dbdy = wrapToPi(np.stack(np.gradient(phases, axis=(1, 2)))*2)/2/nmperpixel
-    #dbdy = wrapToPi(np.diff(phases, axis=1))
+    # dbdy = wrapToPi(np.diff(phases, axis=1))
     dudx = myweighed_lstsq(dbdx, K, weights)
     dudy = myweighed_lstsq(dbdy, K, weights)
     # suspicious minus sign
@@ -119,7 +119,6 @@ def kvecs2J(ks, standardize=True):
         kvecs = ks
     r_k, theta_0, symmetry = get_initial_props(kvecs)
     krefs = latticegen.generate_ks(r_k, theta_0, sym=symmetry)[:3]
-    #krefs = latticegen.generate_ks(r_k, 0, sym=symmetry)[:3]
     if standardize:
         krefs = standardize_ks(krefs)
     dks = krefs - kvecs
@@ -162,16 +161,10 @@ def props_from_Jac(Jac, refangle=0., refscale=1., diff=False):
 
     """
     u, s, v = np.linalg.svd(Jac)
-    #u = np.sign(np.diag(v)) * u
-    #v = (np.sign(np.diag(v)) * v)
-    #u_p = u @ v
     signs = np.sign(u[..., None, [0, 1], [0, 1]])
-    #v = (np.sign(np.diag(u))*v)
-    #u = (np.sign(np.diag(u))*u).T
     v = signs*v
     u = np.swapaxes(signs*u, -1, -2)
     u_p = np.swapaxes(u @ v, -1, -2)
-    #u_p = (u @ v).T
     angle = np.rad2deg(np.arctan2(u_p[..., 1, 0], u_p[..., 0, 0]))
     aniangle = np.rad2deg(np.arctan2(u[..., 1, 0], u[..., 0, 0]))
     if diff:
@@ -254,11 +247,11 @@ def calc_props_from_phasegradient(kvecs, grads, weights, nmperpixel):
 
     Jac = phasegradient2Jac(kvecs, grads, weights, nmperpixel)
     r_k, theta_0, symmetry = get_initial_props(kvecs)
-    theta_iso = f2angle(r_k, nmperpixel=nmperpixel)
+    # theta_iso = f2angle(r_k, nmperpixel=nmperpixel)
     props = props_from_Jac(Jac)
     props[0] = props[0] + theta_0
     props[1] = props[1]  # + theta_0
-    #props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
+    # props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
     return props
 
 
@@ -277,11 +270,11 @@ def calc_props_from_phases(kvecs, phases, weights, nmperpixel):
     """
     Jac = phases2Jac(kvecs, phases, weights, nmperpixel)
     r_k, theta_0, symmetry = get_initial_props(kvecs)
-    theta_iso = f2angle(r_k, nmperpixel=nmperpixel)
+    # theta_iso = f2angle(r_k, nmperpixel=nmperpixel)
     props = props_from_Jac(Jac)
     props[0] = props[0] + theta_0
     props[1] = props[1]  # + theta_0
-    #props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
+    # props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
     return props
 
 
@@ -292,8 +285,8 @@ def calc_eps_from_phasegradient(kvecs, grads, weights, nmperpixel):
     Using phase gradients calculated in wfr directly counters
     artefacts at reference k-vector boundaries.
     """
-    J_diff = J_diff_from_phasegradient(kvecs, grads, weights, nmperpixel)
-    props = np.array(props_from_J(J_diff))
+    Jac_diff = Jac_diff_from_phasegradient(kvecs, grads, weights, nmperpixel)
+    props = np.array(props_from_Jac(Jac_diff))
     kappa = props[3]
     delta = 0.16
     epsilon = (kappa - 1) / (1 + delta*kappa)
@@ -333,7 +326,7 @@ def Jac_diff_from_phasegradient(kvecs, grads, weights, nmperpixel, a_0=0.246):
     J = phasegradient2J(kvecs, grads, weights, nmperpixel)
     r_k, theta_0, symmetry = get_initial_props(kvecs)
     theta_iso = f2angle(r_k, nmperpixel=nmperpixel, a_0=a_0)
-    J_diff = J_to_J_diff(J, theta_iso)
+    J_diff = J_2_J_diff(J, theta_iso)
     Jac_diff = (np.eye(2) + J_diff)
     return Jac_diff
 
@@ -357,7 +350,6 @@ def calc_props_from_phasegradient2(kvecs, grads, weights, nmperpixel, a_0=0.246)
                                     (kvecs+dks)[..., 0])) % 60).mean()
     J = phasegradient2J(kvecs, grads, weights, nmperpixel)
     J_diff = J_2_J_diff(J, theta_iso)
-    #assert J_diff == J_diff_from_phasegradient(kvecs, grads, weights, nmperpixel)
     props = np.array(props_from_J(J_diff))
     props[2] = props[2] * theta_iso
     props[0] = props[0] + xi_iso
@@ -458,7 +450,7 @@ def moire_props_from_Jac(kvecs, Jac, nmperpixel, a_0=0.246, decomposition=None):
     props[0] = props[0] + theta_iso
     props[1] = props[1] - theta_iso/2  # - ((90 + theta_0) % 60)
 
-    #props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
+    # props[2] = f2angle(props[2] * r_k, nmperpixel=nmperpixel, a_0=a_0)
     return props
 
 
@@ -493,7 +485,7 @@ def moire_props_from_Jac_2_Kerelsky(kvecs, Jac, nmperpixel, a_0=0.246, decomposi
     assert iso_props[2] == 0
     B0 = twist_matrix(iso_props[0])
     props = double_strain_decomp(Jac @ B0)
-    return props, isoprops
+    return props, iso_props
 
 
 def get_initial_props(ks, standardize=False):
@@ -529,7 +521,9 @@ def calc_abcd(J, delta=0.16):
 
 
 def double_strain_decomp(Jac, delta=0.16):
-    """Do a double strain decomposition on a Jac
+    """Do an analytical double strain decomposition on a Jac
+
+    UNTESTED
 
     Returns
     -------
@@ -543,13 +537,13 @@ def double_strain_decomp(Jac, delta=0.16):
     a, b, c, d = calc_abcd(Jac, delta=delta)
     bd = b*b + d*d
     alpha = 4 / (1-delta)
-    #taylored in 1/alpha
-    #c0 = bd * (1+ c*c*(1/alpha**2 - 2/alpha**3))
-    #c1 = c*c / (alpha**2) * (1 + 2*np.sqrt(bd)/alpha)
+    # taylored in 1/alpha
+    # c0 = bd * (1+ c*c*(1/alpha**2 - 2/alpha**3))
+    # c1 = c*c / (alpha**2) * (1 + 2*np.sqrt(bd)/alpha)
     # Dropping  terms smaller than eps^2/alpha
     ca = c*c / (alpha*alpha)
-    #c0 = bd/(1-ca)
-    #c1 = ca / (1-ca)
+    # c0 = bd/(1-ca)
+    # c1 = ca / (1-ca)
     # Renewed expansion
     c0 = bd * (1 + ca*(1 - 2*np.sqrt(bd) / alpha))
     c1 = -ca * (1 - 2*np.sqrt(bd) / alpha)
@@ -561,11 +555,11 @@ def double_strain_decomp(Jac, delta=0.16):
         epsminussquare = ((bd+a*a) + np.sqrt((bd+a*a)**2 + a*a*epsplussquare))/2
         epsminus = np.sqrt(epsminussquare)
         print('epsminus', epsminus)
-    #phi = np.arccos(a / epsminus)
+    # phi = np.arccos(a / epsminus)
     # Two ways to compute epsplus, for debug purposes
-    #assert np.all(np.sin(phi) >= 0)
-    #epsplus = c / np.sin(phi) - alpha
-    #assert np.all(epsplus >= 0)
+    # assert np.all(np.sin(phi) >= 0)
+    # epsplus = c / np.sin(phi) - alpha
+    # assert np.all(epsplus >= 0)
 
     assert np.all(epsplussquare >= 0)
 
@@ -575,7 +569,7 @@ def double_strain_decomp(Jac, delta=0.16):
     epsr = np.tan(phi) * epsminus / epsplus
     theta = 0.5*np.arctan((b - d*epsr) / (b*epsr + d))
     # I don't know why this gives a seemingly correct answer?
-    #theta = 0.5*np.arctan2((b*epsr + d), (b - d*epsr))
+    # theta = 0.5*np.arctan2((b*epsr + d), (b - d*epsr))
     epsa = 0.5*(epsplus + epsminus)
     epsb = 0.5*(epsplus - epsminus)
     return np.array([2*np.rad2deg(phi),
@@ -647,7 +641,6 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
     [1] Kerelsky et al., https://www.nature.com/articles/s41586-019-1431-9
         Suppl. Note 1.
     """
-    knorm = np.linalg.norm(kvecs, axis=1).mean() / nmperpixel
     angles = np.arctan2(*kvecs.T[::-1])
     r_k0 = latticegen.transformations.a_0_to_r_k(a_0)
     lkvecs = kvecs / r_k0
@@ -743,7 +736,6 @@ def Kerelsky_Jac(kvecs, nmperpixel=1., a_0=0.246,
     [1] Kerelsky et al., https://www.nature.com/articles/s41586-019-1431-9
         Suppl. Note 1.
     """
-    knorm = np.linalg.norm(kvecs, axis=1).mean() / nmperpixel
     angles = np.arctan2(*kvecs.T[::-1])
     r_k0 = latticegen.transformations.a_0_to_r_k(a_0) * nmperpixel
     lkvecs = kvecs / r_k0
@@ -823,7 +815,6 @@ def Kerelsky_J(J, kvecs, nmperpixel=1., a_0=0.246,
     [1] Kerelsky et al., https://www.nature.com/articles/s41586-019-1431-9
         Suppl. Note 1.
     """
-    knorm = np.linalg.norm(kvecs, axis=1).mean() / nmperpixel
     angles = np.arctan2(*kvecs.T[::-1])
     r_k0 = latticegen.transformations.a_0_to_r_k(a_0) * nmperpixel
     lkvecs = kvecs / r_k0

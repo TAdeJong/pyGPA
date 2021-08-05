@@ -5,13 +5,13 @@ from numba import njit
 
 
 def forward_transform(vecs, ks):
-    #A = 0.5*np.sqrt(3) * ks
+    # A = 0.5*np.sqrt(3) * ks
     A = ks
     return vecs @ A.T
 
 
 def backward_transform(vecs, ks):
-    #A = 2/np.sqrt(3)*np.linalg.inv(ks)
+    # A = 2/np.sqrt(3)*np.linalg.inv(ks)
     A = np.linalg.inv(ks)
     return vecs @ A.T
 
@@ -25,7 +25,6 @@ def backward_transform(vecs, ks):
 #     """
 #     #return nb_backward_transform((nb_forward_transform(vecs) - nb_forward_transform(np.array([55.,0.]))) % 1.) - rmin
 #     return nb_backward_transform((nb_forward_transform(vecs) ) % 1.) - rmin
-#     #return nb_backward_transform((nb_forward_transform(vecs) - nb_forward_transform(np.array([-15.,5.]))) % 1.) - rmin
 
 def cart_in_uc(vecs, ks, rmin=0):
     """Convert 2D vecs to cartesian coordinates within the unit cell,
@@ -125,30 +124,6 @@ def add_to_position(value, R, res, weight):
 #             add_to_position(image[i, j], newpos, res, weight)
 #             dists = np.linalg.norm(neighbor_pos - newpos, axis=-1)
 #             handled[dists <= np.sqrt(2)] = True
-
-
-@njit()
-def _unit_cell_average2(image, u, z=1):
-    """Average image with a distortion u over all it's unit cells
-    using a drizzle like approach, scaling the unit cell
-    up by a factor z.
-    Return an array containing the unit cell
-    and the corresponding weight distrbution."""
-    res = np.zeros(rsize)
-    weight = np.zeros(rsize)
-    for i in range(image.shape[0]):
-        for j in range(image.shape[1]):
-            if not np.isnan(image[i, j]):
-                R = np.array([i, j]).astype(np.float64)
-                R = nb_cart_in_uc(R + u[i, j]) * z
-                R_floor = np.floor(R)
-                overlap = float_overlap(R - R_floor)
-                R_int = R_floor.astype(np.int32)
-                for li in range(overlap.shape[0]):
-                    for lj in range(overlap.shape[1]):
-                        res[R_int[0]+li, R_int[1]+lj] += image[i, j] * overlap[li, lj]
-                        weight[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
-    return res/weight
 
 
 def expand_unitcell(unit_cell_image, ks, shape, z=1, z2=1, u=0):

@@ -59,11 +59,11 @@ def phase_unwrap_ref(psi, weight, kmax=100):
         if (k == 1):
             pk = zk
         else:
-            betak = rkzksum / rkzkprevsum
+            betak = rkzksum / rkzkprevsum   # noqa: F821
             pk = zk + betak * pk
 
         # save the current value as the previous values
-        rkzkprevsum = rkzksum
+        rkzkprevsum = rkzksum   # noqa: F841
 
         # perform one scalar and two vectors update
         Qpk = applyQ(pk, WWx, WWy)
@@ -74,7 +74,6 @@ def phase_unwrap_ref(psi, weight, kmax=100):
         # check the stopping conditions
         if ((k >= kmax) or (np.linalg.norm(rk) < eps * normR0)):
             break
-        #print(np.linalg.norm(rk), normR0)
     print(k, rk.shape)
     return phi
 
@@ -190,12 +189,12 @@ def phase_unwrap(psi, weight=None, kmax=100):
         if (k == 1):
             pk = zk
         else:
-            betak = rkzksum / rkzkprevsum
+            betak = rkzksum / rkzkprevsum  # noqa: F821
             pk = zk + betak * pk
 
         # save the current value as the previous values
 
-        rkzkprevsum = rkzksum
+        rkzkprevsum = rkzksum  # noqa: F841
 
         # perform one scalar and two vectors update
         Qpk = applyQ(pk, WWx, WWy)
@@ -212,8 +211,6 @@ def phase_unwrap(psi, weight=None, kmax=100):
 def phase_unwrap_ref_prediff(dx, dy, weight=None, kmax=100):
     """dx, dy sized NxM-1 and N-1xM, weights sized NxM"""
     # vector b in the paper (eq 15) is dx and dy
-    #dx = _wrapToPi(np.diff(psi, axis=1))
-    #dy = _wrapToPi(np.diff(psi, axis=0))
     if weight is None:
         WWx = np.ones_like(dx)
         WWy = np.ones_like(dy)
@@ -250,11 +247,11 @@ def phase_unwrap_ref_prediff(dx, dy, weight=None, kmax=100):
         if (k == 1):
             pk = zk
         else:
-            betak = rkzksum / rkzkprevsum
+            betak = rkzksum / rkzkprevsum  # noqa: F821
             pk = zk + betak * pk
 
         # save the current value as the previous values
-        rkzkprevsum = rkzksum
+        rkzkprevsum = rkzksum  # noqa: F841
 
         # perform one scalar and two vectors update
         Qpk = applyQ(pk, WWx, WWy)
@@ -307,11 +304,11 @@ def phase_unwrap_prediff(dx, dy, weight=None, kmax=100):
         if (k == 1):
             pk = zk
         else:
-            betak = rkzksum / rkzkprevsum
+            betak = rkzksum / rkzkprevsum  # noqa: F821
             pk = zk + betak * pk
 
         # save the current value as the previous values
-        rkzkprevsum = rkzksum
+        rkzkprevsum = rkzksum  # noqa: F841
 
         # perform one scalar and two vectors update
         Qpk = applyQ(pk, WWx, WWy)

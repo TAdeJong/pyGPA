@@ -1,5 +1,5 @@
 import numpy as np
-from hypothesis import given, example, settings
+from hypothesis import given, settings
 import hypothesis.strategies as st
 
 import latticegen
@@ -31,6 +31,7 @@ def test_props_from_J(theta, psi, kappa, a):
     assert np.isclose(props2[2], a)
     assert np.isclose(props2[3], kappa)
 
+
 @given(theta=st.floats(0., 360,),
        psi=st.floats(-90., 90.),
        kappa=st.floats(1.+1e-7, 1e10, exclude_min=True),
@@ -61,9 +62,9 @@ def test_calc_props_from_kvecs(theta, psi, kappa, a):
                                    kappa=kappa,
                                    psi=psi)[:3]
     props = pe.calc_props_from_kvecs4(kvecs)
-    assert np.isclose(periodic_difference(props[0], theta, period=60), 0, atol=1e-3) #atol=1e-6)
+    assert np.isclose(periodic_difference(props[0], theta, period=60), 0, atol=1e-3)
     assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-2)
-    assert np.isclose(props[2], a) #, rtol=1e-6)
+    assert np.isclose(props[2], a)
     assert np.isclose(props[3], kappa)
 
 
@@ -81,12 +82,12 @@ def test_kvecs2Jac(theta, psi, kappa, a):
     krefs = latticegen.generate_ks(r_kl, theta_0, sym=symmetry)[:-1]
     krefs2 = krefs @ Jac.T
     abs_diffs = np.linalg.norm((krefs2[None] - ks[:, None]), axis=-1).min(axis=1)
-    rel_diffs =  abs_diffs / r_kl
-    #rel_error = np.linalg.norm(krefs2 - ks, axis=1) / r_kl
+    rel_diffs = abs_diffs / r_kl
+    # rel_error = np.linalg.norm(krefs2 - ks, axis=1) / r_kl
     assert np.allclose(rel_diffs, 0, atol=1e-3)
 
 
-@given(theta=st.floats(1e-1, 45 - 1e-1),#, exclude_min=True),
+@given(theta=st.floats(1e-1, 45 - 1e-1),
        psi=st.floats(-90., 90.),
        epsilon=st.floats(1e-5, 0.1, exclude_min=True),
        a=st.floats(1e-3, 1e3, exclude_min=True),
@@ -97,13 +98,14 @@ def test_kerelsky_plus(theta, psi, epsilon, a, xi):
     r_k2, kappa = epsilon_to_kappa(a_0_to_r_k(a), epsilon)
     ks2 = latticegen.generate_ks(r_k2, xi+theta, kappa=kappa, psi=psi)
     props = pe.Kerelsky_plus(ks2[:3] - ks1[:3],
-                               nmperpixel=1, a_0=a)
+                             nmperpixel=1, a_0=a)
     assert np.isclose(periodic_difference(np.abs(props[0]), theta, period=60), 0, atol=1e-2)
     assert np.isclose(periodic_difference(props[1], psi, period=180), 0, atol=1e-2)
     assert np.isclose(props[2], epsilon, rtol=1e-3, atol=1e-6)
     assert np.isclose(periodic_difference(props[3], xi, period=360), 0, atol=1e-2)
 
-#@settings(deadline=None)
+
+@settings(deadline=1000)  # Workaround for the first compile-time of numba in Kerelsky_Jac
 @given(theta=st.floats(1e-1, 45 - 1e-1),
        psi=st.floats(-90., 90.),
        epsilon=st.floats(1e-5, 0.1, exclude_min=True),
@@ -125,7 +127,7 @@ def test_kerelsky_Jac(theta, psi, epsilon, a, xi):
 @given(theta=st.floats(1e-6, 60 - 1e-6, exclude_min=True),
        nmperpixel=st.floats(1e-9, 1e9, exclude_min=True),
        a=st.floats(1e-9, 1e9, exclude_min=True),
-       )  
+       )
 def test_f2angle(theta, nmperpixel, a):
     # a is in nm / unit cell, so to convert to unit cells per pixel, we divide
     ks1 = latticegen.generate_ks(a_0_to_r_k(a/nmperpixel), 0)

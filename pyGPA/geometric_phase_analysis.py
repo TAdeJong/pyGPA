@@ -102,7 +102,7 @@ def myweighed_lstsq(b, K, w):
     broadcasting over the last two dimensions
     of b.
 
-    numba jitted to make it fast.
+    numba jitted to make it faster.
     """
     res = np.empty((2,) + b.shape[1:])
     for i in prange(b.shape[1]):
@@ -463,8 +463,8 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(2, 200)
             # print(f"Too many primary ks {len(primary_ks)}")
             primary_ks = select_closest_to_triangle(all_ks)
         elif len(all_ks) > 6:
-            #print("all_ks > 3, selecting 3 with most similar length")
-            #primary_ks = all_ks[np.argpartition(np.abs(knorms-knorms.mean()), 3)[:3]]
+            # print("all_ks > 3, selecting 3 with most similar length")
+            # primary_ks = all_ks[np.argpartition(np.abs(knorms-knorms.mean()), 3)[:3]]
             if plot:
                 print("all_ks > 3 but not enough primary_ks, selecting closest to triangle")
             primary_ks = select_closest_to_triangle(all_ks)
@@ -728,8 +728,7 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
         for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
             sf *= np.exp(-2j*np.pi * ((wx-kx)*xx + (wy-ky)*yy))
-            grad = wrapToPi(grad_func(-np.angle(sf))*2)/4/np.pi
-            #grad = wrapToPi(np.stack(np.gradient(-np.angle(sf)), axis=-1)*2)/4/np.pi
+            grad = wrapToPi(grad_func(-np.angle(sf))*2) / (4*np.pi)
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t]
             g['w'][t] = np.array([wx, wy])
@@ -852,7 +851,8 @@ def gaussian_deconvolve(data, sigma, dr=20, balance=5000):
     kernel = np.fft.fftshift(kernel)
     kernel = kernel / kernel.sum()
     deconvolved = [wiener(p, kernel, balance=balance,
-                          clip=False, is_real=True)[2*dr:-2*dr, 2*dr:-2*dr] for p in padded.reshape((-1,)+padded.shape[-2:])]
+                          clip=False, is_real=True)[2*dr:-2*dr, 2*dr:-2*dr]
+                   for p in padded.reshape((-1,)+padded.shape[-2:])]
     return np.reshape(np.stack(deconvolved), data.shape)
 
 
@@ -861,16 +861,16 @@ def extract_displacement_field(image, kvecs, sigma=None, kwscale=2.5, ksteps=3,
                                deconvolve=False):
     """Top level convenience function
 
-    WIP: should prediff phases in case of deconvolve?"""
+    WIP: should prediff phases in case of deconvolve?
+
+    """
     kw = np.linalg.norm(kvecs, axis=1).mean() / kwscale
     if sigma is None:
         sigma = int(np.ceil(1/np.linalg.norm(kvecs, axis=1).min()))
     kstep = kw / ksteps
-    gs = []
-    for pk in kvecs:
-        g = wfr_func(image - image.mean(), sigma,
-                     pk[0], pk[1], kw=kw, kstep=kstep)
-        gs.append(g)
+    gs = [wfr_func(image - image.mean(), sigma,
+                   pk[0], pk[1], kw=kw, kstep=kstep)
+          for pk in kvecs]
     phases = np.stack([np.angle(g['lockin']) for g in gs])
     mask = np.zeros_like(image, dtype=bool)
     dr = 2 * sigma
