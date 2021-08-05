@@ -1,6 +1,7 @@
 import numpy as np
-from hypothesis import given, settings
+from hypothesis import given
 import hypothesis.strategies as st
+import pytest
 
 import latticegen
 from latticegen.transformations import rotation_matrix, scaling_matrix, a_0_to_r_k, epsilon_to_kappa
@@ -8,6 +9,17 @@ from latticegen.transformations import rotation_matrix, scaling_matrix, a_0_to_r
 import pyGPA.property_extract as pe
 from pyGPA.mathtools import periodic_difference
 from pyGPA.geometric_phase_analysis import f2angle
+
+
+@pytest.fixture(scope='module')
+def numba_Kerelsky_Jac():
+    """Fixture running Kerelsky_Jac once to trigger numba compile
+
+    This avoids Hypothesis flaky errors
+    """
+    ks1 = latticegen.generate_ks(1, 0)
+    ks2 = latticegen.generate_ks(1, 5)
+    return pe.Kerelsky_Jac(ks2[:3] - ks1[:3], a_0=1)
 
 
 @given(theta=st.floats(0., 360.),
@@ -105,14 +117,13 @@ def test_kerelsky_plus(theta, psi, epsilon, a, xi):
     assert np.isclose(periodic_difference(props[3], xi, period=360), 0, atol=1e-2)
 
 
-@settings(deadline=1000)  # Workaround for the first compile-time of numba in Kerelsky_Jac
 @given(theta=st.floats(1e-1, 45 - 1e-1),
        psi=st.floats(-90., 90.),
        epsilon=st.floats(1e-5, 0.1, exclude_min=True),
        a=st.floats(1e-3, 1e3, exclude_min=True),
        xi=st.floats(-90., 90.),
        )
-def test_kerelsky_Jac(theta, psi, epsilon, a, xi):
+def test_kerelsky_Jac(theta, psi, epsilon, a, xi, numba_Kerelsky_Jac):
     ks1 = latticegen.generate_ks(a_0_to_r_k(a), xi, kappa=1, psi=psi)
     r_k2, kappa = epsilon_to_kappa(a_0_to_r_k(a), epsilon)
     ks2 = latticegen.generate_ks(r_k2, xi+theta, kappa=kappa, psi=psi)
