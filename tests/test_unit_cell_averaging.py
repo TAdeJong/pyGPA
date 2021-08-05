@@ -4,7 +4,7 @@ import pytest
 import latticegen
 
 import pyGPA.unit_cell_averaging as uc
-from test_geometric_phase_analysis import gaussiandeform
+from test_geometric_phase_analysis import gaussiandeform  # noqa F401
 
 
 @pytest.mark.parametrize("z", [2, 3])
@@ -25,7 +25,7 @@ def test_project_and_expand(z):
 
 
 @pytest.mark.parametrize("z", [2, 3])
-def test_deformed_project_and_expand(z, gaussiandeform):
+def test_deformed_project_and_expand(z, gaussiandeform): # noqa F811
     r_k = 0.02
     xi0 = 7.0
     psi = 0.0

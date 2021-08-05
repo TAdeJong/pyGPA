@@ -426,7 +426,7 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(2, 200)
     if len(all_ks) < 3:
         newparams = True
         if len(all_ks) == 0:
-            print(f"no ks at: {threshold:.4f}")
+            # print(f"no ks at: {threshold:.4f}")
             if threshold > _decrease_threshold(threshold):
                 threshold = _decrease_threshold(threshold)
             else:
@@ -434,15 +434,12 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(2, 200)
                 newparams = False
         else:
             coordsminlength = np.linalg.norm(coords, axis=1).min()
-            # print(f"cminlength {coordsminlength:.2f}, s {sigma:.1f}")
             if coordsminlength < 5 * sigma:
                 sigma = coordsminlength / 6
-                # print(f"cminlength {coordsminlength:.2f}")
             elif threshold > 0.2*np.max([smooth[cindex[0], cindex[1]] for cindex in cindices]):
                 threshold = 0.2*np.max([smooth[cindex[0], cindex[1]] for cindex in cindices])
             elif threshold > _decrease_threshold(threshold):
                 threshold = _decrease_threshold(threshold)
-                # print(f"new thres: {threshold:.2f}")
             else:
                 print("Can't find enough ks!")
                 newparams = False

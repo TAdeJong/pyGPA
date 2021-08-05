@@ -1,6 +1,6 @@
 import numpy as np
 import scipy.ndimage as ndi
-from hypothesis import given
+from hypothesis import given, settings
 import hypothesis.strategies as st
 import pytest
 
@@ -41,6 +41,7 @@ def testset_gaussian(gaussiandeform):
     return original, deformed, noise, ori_ks
 
 
+@settings(deadline=350)
 @given(theta=st.floats(0., 60,),
        psi=st.floats(-90., 90.),
        kappa=st.floats(1.+1e-7, 2, exclude_min=True),
