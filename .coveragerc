@@ -1,0 +1,7 @@
+[run]
+source=pyGPA
+omit =
+	setup.py
+	versioneer.py
+	pyGPA/_version.py
+	tests/*
