@@ -1,7 +1,7 @@
 # pyGPA
 
 [![CI](https://github.com/TAdeJong/pyGPA/actions/workflows/ci.yaml/badge.svg)](https://github.com/TAdeJong/pyGPA/actions/workflows/ci.yaml)
-![Codecov](https://img.shields.io/codecov/c/gh/TAdeJong/pyGPA)
+[![Codecov](https://img.shields.io/codecov/c/gh/TAdeJong/pyGPA)](https://app.codecov.io/gh/TAdeJong/pyGPA)
 
 
 A python package collecting an assortment of Geometric Phase Analysis algorithms and tools to analyse regular (moiré) lattices. 

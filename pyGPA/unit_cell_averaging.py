@@ -54,6 +54,26 @@ def calc_ucell_parameters(ks, z):
 
 
 def unit_cell_average(image, ks, u=None, z=1):
+    """Unit cell average an image
+
+    Parameters
+    ----------
+    image : array_like (N,M)
+        image to be averaged
+    ks : array_like (2,2)
+        k-vectors describing the unit cell.
+    u : array_like (2,N,M) or None
+        Deformation field
+    z : int, default=1
+        scale factor to upscale the unit cell
+
+    Returns
+    -------
+    array_like
+        array containing the average unit cell of image.
+        (in cartesian coordinates, not in terms of ks!)
+        array is padded with np.nan's.
+    """
     @njit()
     def nb_forward_transform(vecs):
         return vecs @ ks.T
@@ -65,6 +85,8 @@ def unit_cell_average(image, ks, u=None, z=1):
     rmin, rsize = calc_ucell_parameters(ks, z)
     if u is None:
         u = np.zeros(image.shape+(2,), dtype=np.float64)
+    else:
+        u = np.moveaxis(u, 0, -1)
 
     @njit()
     def nb_cart_in_uc(vecs):
@@ -133,9 +155,9 @@ def expand_unitcell(unit_cell_image, ks, shape, z=1, z2=1, u=0):
     optionally use a distortion `u`.
     """
     rr = np.mgrid[:shape[0], :shape[1]] / z2
-    rrt = np.moveaxis(rr, 0, -1)
+    rrt = np.moveaxis(rr + u, 0, -1)
     rmin, rsize = calc_ucell_parameters(ks, z)
-    X = cart_in_uc(rrt + u, ks, rmin) * z
+    X = cart_in_uc(rrt, ks, rmin) * z
     res = ndi.map_coordinates(np.nan_to_num(unit_cell_image),
                               np.moveaxis(X, -1, 0),
                               cval=0)
