@@ -636,6 +636,8 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
         angle of lattice with respect to horizontal
         in degrees
 
+    Returns np.nan if the least squares minimization did not converge.
+
     References
     ----------
     [1] Kerelsky et al., https://www.nature.com/articles/s41586-019-1431-9
@@ -672,7 +674,7 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
         if res2.cost < res.cost:
             res = res2
     if res.cost > 1e-20:
-        est = res.x + np.abs(res.active_mask)*1e-5
+        est = res.x + 1e-2 * np.abs(res.active_mask)
         res2 = least_squares(moire_diffs, est, bounds=bounds)
         if debug:
             print(res2)

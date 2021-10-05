@@ -708,6 +708,7 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
     Divides the gradient component by an extra factor 2pi (compared to grad_opt)
     That should be removed.
     """
+    print("Warning: fix your factors of 2 pi")
     xx, yy = np.ogrid[0:image.shape[0],
                       0:image.shape[1]]
     g = {'w': np.zeros(image.shape+(2,)),
@@ -728,7 +729,7 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
         for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
             sf *= np.exp(-2j*np.pi * ((wx-kx)*xx + (wy-ky)*yy))
-            grad = wrapToPi(grad_func(-np.angle(sf))*2) / (4*np.pi)
+            grad = wrapToPi(grad_func(-np.angle(sf))*2) / 2  # (4*np.pi)
             t = np.abs(sf) > np.abs(g['lockin'])
             g['lockin'][t] = sf[t]
             g['w'][t] = np.array([wx, wy])
