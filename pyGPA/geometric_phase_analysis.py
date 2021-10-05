@@ -704,6 +704,9 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
     of the GPA of the best k-vector.
     Slightly more accurate, determination of this gradient,
     as boundary effects are mitigated
+
+    Divides the gradient component by an extra factor 2pi (compared to grad_opt)
+    That should be removed.
     """
     xx, yy = np.ogrid[0:image.shape[0],
                       0:image.shape[1]]
@@ -718,7 +721,7 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
             return np.stack([dbdx, dbdy], axis=-1)
     elif grad is None:
         def grad_func(phase):
-            return np.stack(np.gradient(-phase), axis=-1)
+            return np.stack(np.gradient(phase), axis=-1)
     else:
         grad_func = grad
     for wx in np.arange(kx-kw, kx+kw, kstep):

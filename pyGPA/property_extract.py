@@ -671,7 +671,14 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
             print(res2)
         if res2.cost < res.cost:
             res = res2
-    if res.success:
+    if res.cost > 1e-20:
+        est = est + np.abs(res.active_mask)*1e-5
+        res2 = least_squares(moire_diffs, est, bounds=bounds)
+        if debug:
+            print(res2)
+        if res2.cost < res.cost:
+            res = res2
+    if res.success and (res.cost <= 1e-10):
         params = res.x
     else:
         params = np.full(4, np.nan)

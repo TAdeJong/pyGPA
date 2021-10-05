@@ -209,7 +209,21 @@ def phase_unwrap(psi, weight=None, kmax=100):
 
 
 def phase_unwrap_ref_prediff(dx, dy, weight=None, kmax=100):
-    """dx, dy sized NxM-1 and N-1xM, weights sized NxM"""
+    """Unwrap phase from phase gradients
+
+    Reference implementation. Use `phase_unwrap_prediff` instead.
+
+    Parameters
+    ----------
+    dx: array_like, NxM-1
+        np.diff(psi, axis=1) Note the direction of the derivative.
+    dy: array_like, N-1xM
+        np.diff(psi, axis=0)
+    weight: array_like, NxM or None
+    """
+
+    dx = _wrapToPi(dx)
+    dy = _wrapToPi(dy)
     # vector b in the paper (eq 15) is dx and dy
     if weight is None:
         WWx = np.ones_like(dx)
@@ -266,7 +280,21 @@ def phase_unwrap_ref_prediff(dx, dy, weight=None, kmax=100):
 
 
 def phase_unwrap_prediff(dx, dy, weight=None, kmax=100):
-    """dx, dy sized NxM-1 and N-1xM, weights sized NxM"""
+    """Unwrap phase from phase gradients
+
+    Parameters
+    ----------
+    dx: array_like, NxM-1
+        np.diff(psi, axis=1) Note the direction of the derivative.
+    dy: array_like, N-1xM
+        np.diff(psi, axis=0)
+    weight: array_like, NxM or None
+    kmax: int, default=100
+        maximum number of iterations
+    """
+
+    dx = _wrapToPi(dx)
+    dy = _wrapToPi(dy)
     if weight is None:
         WWx = np.ones_like(dx)
         WWy = np.ones_like(dy)
