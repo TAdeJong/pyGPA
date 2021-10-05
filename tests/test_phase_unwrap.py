@@ -11,7 +11,7 @@ import pyGPA.phase_unwrap as pu
 @pytest.mark.filterwarnings("ignore:invalid value encountered in true_divide")
 @given(kmax=st.integers(1, 30))
 def test_equivalent_phase_unwrap_ref_phase_unwrap(kmax):
-    N = 510
+    N = 256
     xx, yy = np.meshgrid(np.arange(N), np.arange(N), indexing='ij')
     psi0 = (yy+xx)/(4*np.sqrt(2))
     psi = pu._wrapToPi(psi0)
@@ -31,11 +31,10 @@ def test_equivalent_phase_unwrap_ref_phase_unwrap(kmax):
 
 
 def test_equivalent_phase_unwrap_gaussian_weight():
-    N = 510
+    N = 256
     xx, yy = np.meshgrid(np.arange(N), np.arange(N), indexing='ij')
     psi0 = (yy+xx)/(4*np.sqrt(2))
     psi = pu._wrapToPi(psi0)
-    weight = np.ones_like(psi)
     gaussian = np.exp(-((xx-N//2)**2+(yy-N//2)**2)/(0.3*N**2))
     result_phase_unwrap = pu.phase_unwrap(
         psi=psi, weight=gaussian
@@ -47,9 +46,9 @@ def test_equivalent_phase_unwrap_gaussian_weight():
 
 
 @pytest.mark.filterwarnings("ignore:invalid value encountered in true_divide")
-@given(kmax=st.integers(1, 30))
+@given(kmax=st.integers(1,30))
 def test_equivalent_phase_unwrap_ref_prediff_phase_unwrap_prediff(kmax):
-    N = 510
+    N = 256
     xx, yy = np.meshgrid(np.arange(N), np.arange(N), indexing='ij')
     psi0 = (yy+xx)/(4*np.sqrt(2))
     psi = pu._wrapToPi(psi0)
