@@ -11,7 +11,7 @@ import pyGPA.cuGPA as cuGPA
 
 try:
     import cupy
-except ImportError:
+except (ImportError, ModuleNotFoundError):
     pytest.skip("skipping cupy tests as cupy could not be imported", allow_module_level=True)
     
 
