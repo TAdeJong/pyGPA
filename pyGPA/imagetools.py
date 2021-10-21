@@ -34,18 +34,19 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
     Any other kwargs are forwarded to the call to
     `pcolormesh`"""
     x, y = [fftbounds(n, d) for n in fftim.shape]
+    origin = kwargs.pop('origin', 'upper')
     if 'ax' in kwargs:
         ax = kwargs.pop('ax')
     else:
         fig, ax = plt.subplots()
     if pcolormesh:
         X, Y = np.meshgrid(x, y, indexing='xy')
-        im = ax.pcolormesh(X, Y, fftim.T, **kwargs)
+        im = ax.pcolormesh(X, Y, fftim.T, origin=origin, **kwargs)
     else:
         extent = [x[0], x[-1], y[0], y[-1]]
-        im = ax.imshow(fftim.T, extent=extent, origin='lower', **kwargs)
+        im = ax.imshow(fftim.T, extent=extent, origin=origin, **kwargs)
         if contour:
-            ax.contour(fftim.T, colors='white', origin='lower',
+            ax.contour(fftim.T, colors='white',
                        extent=extent, alpha=0.3, levels=levels)
     ax.set_aspect('equal')
     return im

@@ -680,7 +680,7 @@ def Kerelsky_plus(kvecs, nmperpixel=1., a_0=0.246,
             print(res2)
         if res2.cost < res.cost:
             res = res2
-    if res.success and (res.cost <= 1e-10):
+    if res.success and (res.cost <= 0.1):
         params = res.x
     else:
         params = np.full(4, np.nan)
