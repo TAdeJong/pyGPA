@@ -481,7 +481,7 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(2, 200)
         fig, ax = plt.subplots(ncols=2, figsize=[12, 8])
         fftplot(smooth, d=NMPERPIXEL, ax=ax[0],
                 levels=[smooth.max()*threshold*0.8],
-                contour=False, pcolormesh=False)
+                contour=False, pcolormesh=False, origin='lower')
         ax[0].set_xlabel('k (periods / nm)')
         ax[0].set_ylabel('k (periods / nm)')
         ax[0].scatter(*(all_ks/NMPERPIXEL).T, color='red',

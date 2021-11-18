@@ -13,6 +13,19 @@ Geometric Phase Analysis enables the extraction of a _displacement field_ from a
 - Once the displacement field is known, it is also possible to perform unit cell averaging directly from the distorted image, creating low-noise or higher magnification (depending on the PSF of the instrument) images of the unit cell.
 - This unit cell average can be extended back to the full image to create a low noise version, or explore difference from mean unit cell.
 
+## Installation
+
+Installation is somewhat non-trivial, due to dependency on a [non-packaged implementation](https://github.com/TAdeJong/moisan2011) of the smooth + periodic decomposition. Furthermore, to use [CuPy](https://docs.cupy.dev/en/stable/install.html) acceleration, a NVIDIA graphics card and working CUDA installation are needed.
+
+First clone the repository. In the `pyGPA` folder, run the following:
+
+```bash
+$ pip install -e .
+$ pip install git+https://github.com/TAdeJong/moisan2011.git#egg=moisan2011
+```
+
+For CUDA acceleration, follow installation instructions of CuPy https://docs.cupy.dev/en/stable/install.html.
+
 ## Testing
 
 This project uses ``pytest`` and ``hypothesis`` to run tests. The test coverage is far from complete and can be extented though! To test:
@@ -27,9 +40,10 @@ Run the tests.
 
 ```bash
 $ pytest
-================ 4 passed in 5.58s ================
+========================== 20 passed in 42.28s ============================
 ```
 
+Note: The `cuGPA` tests will be skipped automatically if no working `CuPy` installation is detected.
 
 ## See also
 
