@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/TAdeJong/pyGPA/actions/workflows/ci.yaml/badge.svg)](https://github.com/TAdeJong/pyGPA/actions/workflows/ci.yaml)
 [![Codecov](https://img.shields.io/codecov/c/gh/TAdeJong/pyGPA)](https://app.codecov.io/gh/TAdeJong/pyGPA)
-
+[![DOI](https://zenodo.org/badge/331613874.svg)](https://zenodo.org/badge/latestdoi/331613874)
 
 A python package collecting an assortment of Geometric Phase Analysis algorithms and tools to analyse regular (moiré) lattices. 
 
