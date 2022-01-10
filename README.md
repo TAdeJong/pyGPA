@@ -49,9 +49,10 @@ Note: The `cuGPA` tests will be skipped automatically if no working `CuPy` insta
 
 https://github.com/TAdeJong/moire-lattice-generator
 
-[T. Benschop, T.A. de Jong _et al._ Phys. Rev. Research *3*, 013153](https://doi.org/10.1103/PhysRevResearch.3.013153) (Code not actually used for that work, but builds upon the ideas)
 
-[T.A. de Jong _et al._,Imaging moiré deformation and dynamics in twisted bilayer graphene, arXiv:2107.14716](https://arxiv.org/abs/2107.14716)
+[T.A. de Jong _et al._Imaging moiré deformation and dynamics in twisted bilayer graphene. Nat Commun **13**, 70 (2022)](https://doi.org/10.1038/s41467-021-27646-1) ([arxiv](https://arxiv.org/abs/2107.14716))
+
+[T. Benschop, T.A. de Jong _et al._ Phys. Rev. Research *3*, 013153](https://doi.org/10.1103/PhysRevResearch.3.013153) (Code not actually used for that work, but builds upon the ideas)
 
 https://github.com/TAdeJong/weighed_phase_unwrap
 
