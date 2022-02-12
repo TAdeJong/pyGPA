@@ -1,7 +1,7 @@
 """Unit cell averaging of images."""
 import numpy as np
 import scipy.ndimage as ndi
-from numba import njit
+from numba import njit, prange
 
 
 def forward_transform(vecs, ks):
@@ -53,19 +53,106 @@ def calc_ucell_parameters(ks, z):
     return rmin, rsize
 
 
-def unit_cell_average(image, ks, u=None, z=1):
+# def unit_cell_average(image, ks, u=None, z=1):
+#     """Unit cell average an image
+    
+#     Average pixels in an image to a unitcell spanned by 
+#     k-vectors `ks`. Ignores NaNs in the image, such that
+#     NaN can be used to mask parts of the image.
+
+#     Parameters
+#     ----------
+#     image : array_like (N,M)
+#         image to be averaged.
+#     ks : array_like (2,2)
+#         k-vectors describing the unit cell.
+#     u : array_like (2,N,M) or None
+#         Deformation field
+#     z : int, default=1
+#         scale factor to upscale the unit cell
+
+#     Returns
+#     -------
+#     array_like
+#         array containing the average unit cell of image.
+#         (in cartesian coordinates, not in terms of ks!)
+#         array is padded with np.nan's.
+#     """
+#     @njit()
+#     def nb_forward_transform(vecs):
+#         return vecs @ ks.T
+
+#     @njit()
+#     def nb_backward_transform(vecs):
+#         return vecs @ np.linalg.inv(ks).T
+
+#     rmin, rsize = calc_ucell_parameters(ks, z)
+#     if u is None:
+#         u = np.zeros(image.shape+(2,), dtype=np.float64)
+#     else:
+#         u = np.moveaxis(u, 0, -1)
+
+#     @njit()
+#     def nb_cart_in_uc(vecs):
+#         """Convert 2D vecs to cartesian coordinates within the unit cell,
+#         i.e. within a first brillouin zone. (in real space)
+#         Due to numba constraints only takes a one additional dimension,
+#         i.e. a list of vectors.
+#         """
+#         return nb_backward_transform((nb_forward_transform(vecs)) % 1.) - rmin
+    
+#     a,b = rsize
+#     #print("DEBUG", rsize, a, b)
+#     @njit()
+#     def _unit_cell_average(image, u, z=1):
+#         """Average image with a distortion u over all it's unit cells
+#         using a drizzle like approach, scaling the unit cell
+#         up by a factor z.
+#         Return an array containing the unit cell.
+#         """
+#         res = np.zeros((a,b))
+#         weight = np.zeros((a,b))
+#         for i in range(image.shape[0]):
+#             for j in range(image.shape[1]):
+#                 if not np.isnan(image[i, j]):
+#                     R = np.array([i, j]).astype(np.float64)
+#                     R = nb_cart_in_uc(R + u[i, j]) * z
+#                     R_floor = np.floor(R)
+#                     overlap = float_overlap(R - R_floor)
+#                     R_int = R_floor.astype(np.int32)
+#                     for li in range(overlap.shape[0]):
+#                         for lj in range(overlap.shape[1]):
+#                             res[R_int[0]+li, R_int[1]+lj] += image[i, j] * overlap[li, lj]
+#                             weight[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
+#         return res / weight
+
+#     return _unit_cell_average(image, u, z)
+
+
+def unit_cell_average(image, ks, u=None, z=1, only_generate_func=False):
     """Unit cell average an image
+
+    Average pixels in an image to a unitcell spanned by
+    k-vectors `ks`. Ignores NaNs in the image, such that
+    NaN can be used to mask parts of the image.
+
+    In the current implementation, pixels are added in a drizzle like fashion
+    as a square of 1x1 in the zoomed resulting unit cell,
+    e.g. contributing to a cluster of at most 2x2 neighboring pixels.
 
     Parameters
     ----------
     image : array_like (N,M)
-        image to be averaged
+        image to be averaged.
     ks : array_like (2,2)
         k-vectors describing the unit cell.
     u : array_like (2,N,M) or None
         Deformation field
     z : int, default=1
         scale factor to upscale the unit cell
+    only_generate_func : bool, default=False
+        If True, only return the unit cell averaging function
+        to apply to multiple images.
 
     Returns
     -------
@@ -98,39 +185,37 @@ def unit_cell_average(image, ks, u=None, z=1):
         return nb_backward_transform((nb_forward_transform(vecs)) % 1.) - rmin
 
     @njit()
-    def _unit_cell_average(image, u, z=1):
+    def _unit_cell_average(image, u):
         """Average image with a distortion u over all it's unit cells
         using a drizzle like approach, scaling the unit cell
         up by a factor z.
-        Return an array containing the unit cell
-        and the corresponding weight distrbution."""
+        Return an array containing the unit cell.
+        """
         res = np.zeros(rsize)
-        weight = np.zeros(rsize)
+        weights = np.zeros(rsize)
         for i in range(image.shape[0]):
             for j in range(image.shape[1]):
                 if not np.isnan(image[i, j]):
                     R = np.array([i, j]).astype(np.float64)
                     R = nb_cart_in_uc(R + u[i, j]) * z
-                    R_floor = np.floor(R)
-                    overlap = float_overlap(R - R_floor)
-                    R_int = R_floor.astype(np.int32)
-                    for li in range(overlap.shape[0]):
-                        for lj in range(overlap.shape[1]):
-                            res[R_int[0]+li, R_int[1]+lj] += image[i, j] * overlap[li, lj]
-                            weight[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
-        return res/weight
-
-    return _unit_cell_average(image, u, z)
+                    add_to_position(image[i, j], R, res, weights)
+        return res / weights
+    if only_generate_func:
+        return _unit_cell_average
+    return _unit_cell_average(image, u)
 
 
-def add_to_position(value, R, res, weight):
+@njit()
+def add_to_position(value, R, res, weights):
+    """Add value to position R in res and update corresponding weights"""
     R_floor = np.floor(R)
-    overlap = float_overlap(R - R_floor)
+    overlap = float_overlap(R - R_floor) #* (~np.isnan(value))
     R_int = R_floor.astype(np.int32)
     for li in range(overlap.shape[0]):
         for lj in range(overlap.shape[1]):
             res[R_int[0]+li, R_int[1]+lj] += value * overlap[li, lj]
-            weight[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
+            weights[R_int[0]+li, R_int[1]+lj] += overlap[li, lj]
+
 
 # def overlap_modulo(R_floor):
 #     corners = np.array([[0., 0.],
