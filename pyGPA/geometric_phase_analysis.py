@@ -260,7 +260,9 @@ def invert_u(us, iters=35, edge=0, mode='nearest'):
 
 
 def invert_u_overlap(us, iters=35, edge=0, mode='nearest'):
-    """Find the inverse of the displacement u such that:
+    """Find the inverse of the displacement `us`
+
+    Such that:
     \vec u_it(\vec r+\vec us(\vec r)) = \vec r
 
     That is:
@@ -268,12 +270,33 @@ def invert_u_overlap(us, iters=35, edge=0, mode='nearest'):
     sampling that image at u_it will sample the original image.
     This variant of `invert_u` uses an overlap of width `edge`
     to catch as much of the original image as possible.
+
+    Parameters
+    ----------
+    us : np.array, (2,N,M)
+        The displacement field.
+    iters : int, default=35
+        Number of iterations for numerical inversion.
+        No attempts to detect convergence are implemented (yet).
+    edge : int
+        Width of the overlapping edge
+    mode : str, default='nearest'
+        interpolation mode of scipy.ndimage.map_coordinates to use.
+
+    Returns
+    -------
+    u_it : np.array, (2,N+2*edge, M+2*edge)
+        Iteratively computed inverse of us
     """
     xx, yy = np.mgrid[-edge:us.shape[1]+edge, -edge:us.shape[2]+edge]
     u_it = [ndi.map_coordinates(u, [xx, yy], mode=mode) for u in us]
     for i in range(iters-1):
-        u_it = [ndi.map_coordinates(u, [xx+u_it[0], yy+u_it[1]], mode=mode) for u in us]
-    u_it = [ndi.map_coordinates(u, [xx+u_it[0], yy+u_it[1]], mode=mode, cval=np.nan) for u in us]
+        u_it = [ndi.map_coordinates(u, [xx+u_it[0], yy+u_it[1]],
+                                    mode=mode)
+                for u in us]
+    u_it = [ndi.map_coordinates(u, [xx+u_it[0], yy+u_it[1]],
+                                mode=mode, cval=np.nan)
+            for u in us]
     return np.stack(u_it)
 
 
@@ -381,6 +404,7 @@ def extract_primary_ks(image, plot=False, threshold=0.7, pix_norm_range=(2, 200)
     Parameters
     ----------
     image : ndarray
+        The realspoace input image
     plot : bool
         Whether to plot a debug plot containing the FFT, the detected peaks
         and the selected peaks. Also prints more debug info
@@ -607,7 +631,7 @@ def wfr2(image, sigma, kx, ky, kw, kstep):
     w = np.exp(-(wxx**2+wyy**2)/(2*sigma**2))
     w = w/np.sqrt((w**2).sum())
     g = {'w': np.zeros(image.shape+(2,)),
-         'lockin': np.zeros_like(image, dtype=np.complex),
+         'lockin': np.zeros_like(image, dtype=complex),
          }
     for wx in np.arange(kx-kw, kx+kw, kstep):
         for wy in np.arange(ky-kw, ky+kw, kstep):
@@ -630,7 +654,7 @@ def wfr3(image, sigma, klist, kref):
                          np.arange(image.shape[1]),
                          indexing='ij')
     g = {'w': np.zeros(image.shape+(2,)),
-         'lockin': np.zeros_like(image, dtype=np.complex),
+         'lockin': np.zeros_like(image, dtype=complex),
          }
     for wx, wy in klist:
         sf = GPA(image, wx, wy, sigma)
@@ -669,7 +693,7 @@ def wfr2_only_lockin(image, sigma, kx, ky, kw, kstep):
     """
     xx, yy = np.ogrid[0:image.shape[0],
                       0:image.shape[1]]
-    g = np.zeros_like(image, dtype=np.complex)
+    g = np.zeros_like(image, dtype=complex)
     for wx in np.arange(kx-kw, kx+kw, kstep):
         for wy in np.arange(ky-kw, ky+kw, kstep):
             sf = optGPA(image, (wx, wy), sigma)
@@ -684,7 +708,7 @@ def wfr2_only_lockin_vec(image, sigma, kx, ky, kw, kstep):
     vectorized using dask.
     """
     xx, yy = np.ogrid[0:image.shape[0], 0:image.shape[1]]
-    g = np.zeros_like(image, dtype=np.complex)
+    g = np.zeros_like(image, dtype=complex)
     for wx in np.arange(kx-kw, kx+kw, kstep):
         wys = np.arange(ky-kw, ky+kw, kstep)
         wpairs = da.stack(([wx]*len(wys), wys), axis=-1).rechunk({0: 1})
@@ -705,14 +729,12 @@ def wfr2_grad(image, sigma, kx, ky, kw, kstep, grad=None):
     Slightly more accurate, determination of this gradient,
     as boundary effects are mitigated
 
-    Divides the gradient component by an extra factor 2pi (compared to grad_opt)
-    That should be removed.
     """
     print("Warning: fix your factors of 2 pi")
     xx, yy = np.ogrid[0:image.shape[0],
                       0:image.shape[1]]
     g = {'w': np.zeros(image.shape+(2,)),
-         'lockin': np.zeros_like(image, dtype=np.complex),
+         'lockin': np.zeros_like(image, dtype=complex),
          'grad': np.zeros(image.shape+(2,)),
          }
     if grad == 'diff':
@@ -742,15 +764,40 @@ def wfr2_grad_opt(image, sigma, kx, ky, kw, kstep):
     """Optimized version of wfr2_grad.
 
     In addition to returning the
-    used k-vector and lock-in signal, return the gradient of the lock-in
-    signal as well, for each pixel computed from the values of the surrounding pixels
-    of the GPA of the best k-vector. Slightly more accurate, determination of this gradient,
+    used k-vector and lock-in signal,
+    return the gradient of the lock-in signal as well,
+    for each pixel computed from the values of the surrounding pixels
+    of the GPA of the best k-vector.
+    Yields a slightly more accurate, determination of this gradient,
     as boundary effects are mitigated.
+
+    Parameters
+    ----------
+    image : np.array
+    sigma : int
+        width of the Gaussian window for spatial locking
+    kx : float
+        x component of the k-vector
+    ky : float
+        y component of the k-vector
+    kw : float
+        half the width of the range of k-vectors checked
+    kstep : float
+        stepsize of the square grid of k-vectors checked
+
+    Returns
+    -------
+    g : dict
+        dict containing arrays:
+        'lockin' the complex lock-in signal
+        'w' the optimal used k-vector
+        'grad' gradient of the lock-in phase.
+
     """
     xx, yy = np.ogrid[0:image.shape[0],
                       0:image.shape[1]]
     g = {'w': np.zeros(image.shape + (2,)),
-         'lockin': np.zeros_like(image, dtype=np.complex),
+         'lockin': np.zeros_like(image, dtype=complex),
          'grad': np.zeros(image.shape + (2,)),
          }
     for wx in np.arange(kx-kw, kx+kw, kstep):
@@ -771,7 +818,7 @@ def wfr2_grad_vec(image, sigma, kx, ky, kw, kstep):
     xx, yy = np.ogrid[0:image.shape[0],
                       0:image.shape[1]]
     g = {'w': np.zeros(image.shape+(2,)),
-         'lockin': np.zeros_like(image, dtype=np.complex),
+         'lockin': np.zeros_like(image, dtype=complex),
          'grad': np.zeros(image.shape+(2,)),
          }
     for wx in np.arange(kx-kw, kx+kw, kstep):
@@ -800,7 +847,7 @@ def wfr4(image, sigma, klist, kref, dk):
                          np.arange(image.shape[1]),
                          indexing='ij')
     g = {'w': np.zeros(image.shape+(2,)),
-         'lockin': np.zeros_like(image, dtype=np.complex),
+         'lockin': np.zeros_like(image, dtype=complex),
          }
     g['w'][..., 0] = klist[0, 0]
     g['w'][..., 1] = klist[0, 1]
@@ -862,7 +909,7 @@ def extract_displacement_field(image, kvecs, sigma=None, kwscale=2.5, ksteps=3,
                                deconvolve=False):
     """Top level convenience function
 
-    WIP: should prediff phases in case of deconvolve?
+    WIP: should we prediff phases in case of deconvolve?
 
     """
     kw = np.linalg.norm(kvecs, axis=1).mean() / kwscale

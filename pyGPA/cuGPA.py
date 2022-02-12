@@ -133,7 +133,7 @@ def wfr2_grad_single(image, sigma, kx, ky, kw, kstep, grad=None):
     return g
 
 
-def cuwfr2_only_lockin(image, sigma, kvec, kw, kstep):
+def wfr2_only_lockin(image, sigma, kvec, kw, kstep):
     """Optimized version of wfr2 calculating only the lock-in signal.
     Optimization in amount of computation done in each step by only
     computing updated values.

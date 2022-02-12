@@ -77,3 +77,21 @@ def test_reconstruction(testset_gaussian, gaussiandeform):
     reconstructed = GPA.undistort_image(deformed, gaussiandeform)
     assert np.all(np.abs(reconstructed - original) / np.abs(original).max() < 0.02)
     # Add optical flow if feeling fancy, but parameters are hard to optimize.
+
+
+@pytest.mark.parametrize("wfr_func1,wfr_func2", [(GPA.optwfr2, GPA.wfr2),
+                                                 (GPA.optwfr2, GPA.wfr2_grad),
+                                                (GPA.wfr2_grad_opt, GPA.wfr2_grad)])
+def test_wfr2_variants_lockin(wfr_func1, wfr_func2, testset_gaussian):
+    original, deformed, noise, ori_ks = testset_gaussian
+    kw = np.linalg.norm(ori_ks, axis=1).mean() / 2.5
+    sigma = int(np.ceil(1/np.linalg.norm(ori_ks, axis=1).min()))
+    kstep = kw / 3
+    gs = [wfr_func1(deformed - deformed.mean(), sigma,
+                   pk[0], pk[1], kw=kw, kstep=kstep)
+          for pk in ori_ks]
+    gs2 = [wfr_func2(deformed - deformed.mean(), sigma,
+                   pk[0], pk[1], kw=kw, kstep=kstep)
+          for pk in ori_ks]
+    for g1,g2 in zip(gs,gs2):
+        assert np.allclose(g1['lockin'], g2['lockin'])
