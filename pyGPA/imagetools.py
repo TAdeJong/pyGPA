@@ -43,6 +43,8 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
         X, Y = np.meshgrid(x, y, indexing='xy')
         im = ax.pcolormesh(X, Y, fftim.T, origin=origin, **kwargs)
     else:
+        if origin == 'upper':
+            y = y[::-1]
         extent = [x[0], x[-1], y[0], y[-1]]
         im = ax.imshow(fftim.T, extent=extent, origin=origin, **kwargs)
         if contour:
@@ -52,7 +54,8 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
     return im
 
 
-def indicate_k(pks, i, ax=None, inset=True, size="25%", origin='upper', s=10):
+def indicate_k(pks, i, ax=None, inset=True, size="25%",
+               origin='upper', s=10, colors=['red','gray']):
     """Indicate the i-th vector in the list of vectors pks with an arrow
     and highlight in a scatterplot.
     If inset=True (default), create a new inset axis in ax.
@@ -74,8 +77,8 @@ def indicate_k(pks, i, ax=None, inset=True, size="25%", origin='upper', s=10):
         ax.patch.set_alpha(0.0)
     if origin == 'upper':
         ks[:, 1] *= -1
-    ax.scatter(*np.concatenate([ks, -ks, [[0, 0]]]).T, color='gray', s=s)
-    ax.scatter(ks[i, 0], ks[i, 1], color='red', s=3*s)
+    ax.scatter(*np.concatenate([ks, -ks, [[0, 0]]]).T, color=colors[1], s=s)
+    ax.scatter(ks[i, 0], ks[i, 1], color=colors[0], s=3*s)
     if isinstance(i, collections.Iterable):
         for j in i:
             ax.arrow(0, 0, ks[j, 0], ks[j, 1], length_includes_head=True)
@@ -103,6 +106,21 @@ def gauss_homogenize2(image, mask, sigma, nan_scale=None):
 
 def gauss_homogenize3(image, mask, sigma):
     return gauss_homogenize2(image, mask, sigma, nan_scale=1)
+
+def homogenize_per_axis(image, sigma=200, mask=None, reducfunc=np.nanmedian):
+    res = image.copy()
+    for axis in [0,1]:
+        if mask is not None:
+            profile = ndi.gaussian_filter(reducfunc(np.where(mask, res, np.nan),
+                                                      axis=axis, 
+                                                      keepdims=True), 
+                                         sigma=sigma)
+        else:
+            profile = ndi.gaussian_filter(reducfunc(res, axis=axis, keepdims=True), 
+                                       sigma=sigma)
+    
+        res /= profile / profile.max()
+    return res
 
 
 def trim_nans(image):
@@ -157,12 +175,20 @@ def trim_nans2(image, return_lims=False):
 
 def generate_mask(dataset, mask_value, r=20):
     """Generate a boolean mask array covering everything that in
-    any image in dataset contains mask_value. Perform an
-    erosion with radius r to create a safety margin.
+    any image (stacked along axis=0) in dataset contains mask_value. 
+    Perform an erosion with radius r to create a safety margin.
     """
-    mask = ~np.any(dataset == mask_value, axis=0).compute()
+    mask = ~da.any(dataset == mask_value, axis=0).compute()
     mask = ndi.binary_erosion(mask, structure=disk(r))
     return mask
+
+def cull_by_mask(data, mask):
+    """Given a stack of images `data`, remove all rows and columns
+    on the edges fully covered by `mask`, i.e. where mask==0.
+    """
+    xlims = np.where(np.sum(mask,axis=1))[0]
+    ylims = np.where(np.sum(mask,axis=0))[0]
+    return data[..., xlims.min():xlims.max()+1, ylims.min():ylims.max()+1]
 
 
 def to_KovesiRGB(image):

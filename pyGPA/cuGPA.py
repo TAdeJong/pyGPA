@@ -156,3 +156,46 @@ def wfr2_only_lockin(image, sigma, kvec, kw, kstep):
                          g)
     g = g.get()
     return g
+
+def wfr2_only_grad(image, sigma, kvec, kw, kstep, grad=None):
+    """Optimized version of wfr2_grad.
+
+    In addition to returning the
+    used k-vector and lock-in signal, return the gradient of the lock-in
+    signal as well, for each pixel computed from the values of the surrounding pixels
+    of the GPA of the best k-vector. Slightly more accurate, determination of this gradient,
+    as boundary effects are mitigated.
+    """
+    kx, ky = kvec
+    xx, yy = cp.ogrid[0:image.shape[0],
+                      0:image.shape[1]]
+    c_image = cp.asarray(image)
+    g = {'lockin': cp.zeros_like(c_image, dtype=np.complex128),
+         'grad': cp.zeros(image.shape + (2,)),
+         }
+    gaussian = cpndi.fourier_gaussian(cp.ones_like(c_image), sigma=sigma)
+    if grad == 'diff':
+        def grad_func(phase):
+            dbdx = cp.diff(phase, axis=0, append=np.nan)
+            dbdy = cp.diff(phase, axis=1, append=np.nan)
+            return dbdx, dbdy
+    elif grad is None:
+        def grad_func(phase):
+            return cp.gradient(phase)
+    else:
+        grad_func = grad
+    for wx in np.arange(kx-kw, kx+kw, kstep):
+        for wy in np.arange(ky-kw, ky+kw, kstep):
+            multiplier = cp.exp(np.pi*2j * (xx*wx + yy*wy))
+            X = cp.fft.fft2(c_image * multiplier)
+            X = X * gaussian
+            sf = cp.fft.ifft2(X)
+            t = cp.abs(sf) > cp.abs(g['lockin'])
+            g['lockin'] = cp.where(t, sf * cp.exp(-2j*np.pi*((wx-kx)*xx + (wy-ky)*yy)), g['lockin'])
+            angle = -cp.angle(sf)
+            grad = grad_func(angle)
+            grad = cp.stack(grad, axis=-1)
+            # TODO: do outside forloop.
+            g['grad'] = cp.where(t[..., None], grad + 2*np.pi * cp.array([(wx-kx), (wy-ky)]), g['grad'])
+    g['grad'] = wrapToPi(2 * g['grad']) / 2
+    return g['grad'].get()
