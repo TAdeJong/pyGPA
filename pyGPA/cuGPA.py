@@ -157,6 +157,7 @@ def wfr2_only_lockin(image, sigma, kvec, kw, kstep):
     g = g.get()
     return g
 
+
 def wfr2_only_grad(image, sigma, kvec, kw, kstep, grad=None):
     """Optimized version of wfr2_grad.
 

@@ -55,8 +55,8 @@ def calc_ucell_parameters(ks, z):
 
 # def unit_cell_average(image, ks, u=None, z=1):
 #     """Unit cell average an image
-    
-#     Average pixels in an image to a unitcell spanned by 
+
+#     Average pixels in an image to a unitcell spanned by
 #     k-vectors `ks`. Ignores NaNs in the image, such that
 #     NaN can be used to mask parts of the image.
 
@@ -100,7 +100,7 @@ def calc_ucell_parameters(ks, z):
 #         i.e. a list of vectors.
 #         """
 #         return nb_backward_transform((nb_forward_transform(vecs)) % 1.) - rmin
-    
+
 #     a,b = rsize
 #     #print("DEBUG", rsize, a, b)
 #     @njit()
@@ -209,7 +209,7 @@ def unit_cell_average(image, ks, u=None, z=1, only_generate_func=False):
 def add_to_position(value, R, res, weights):
     """Add value to position R in res and update corresponding weights"""
     R_floor = np.floor(R)
-    overlap = float_overlap(R - R_floor) #* (~np.isnan(value))
+    overlap = float_overlap(R - R_floor)  # * (~np.isnan(value))
     R_int = R_floor.astype(np.int32)
     for li in range(overlap.shape[0]):
         for lj in range(overlap.shape[1]):

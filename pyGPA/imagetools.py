@@ -14,6 +14,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import scipy.ndimage as ndi
 from skimage.morphology import disk
+import dask.array as da
 
 from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
@@ -55,7 +56,7 @@ def fftplot(fftim, d=1, pcolormesh=True, contour=False, levels=None, **kwargs):
 
 
 def indicate_k(pks, i, ax=None, inset=True, size="25%",
-               origin='upper', s=10, colors=['red','gray']):
+               origin='upper', s=10, colors=['red', 'gray']):
     """Indicate the i-th vector in the list of vectors pks with an arrow
     and highlight in a scatterplot.
     If inset=True (default), create a new inset axis in ax.
@@ -107,18 +108,19 @@ def gauss_homogenize2(image, mask, sigma, nan_scale=None):
 def gauss_homogenize3(image, mask, sigma):
     return gauss_homogenize2(image, mask, sigma, nan_scale=1)
 
+
 def homogenize_per_axis(image, sigma=200, mask=None, reducfunc=np.nanmedian):
     res = image.copy()
-    for axis in [0,1]:
+    for axis in [0, 1]:
         if mask is not None:
             profile = ndi.gaussian_filter(reducfunc(np.where(mask, res, np.nan),
-                                                      axis=axis, 
-                                                      keepdims=True), 
-                                         sigma=sigma)
+                                                    axis=axis,
+                                                    keepdims=True),
+                                          sigma=sigma)
         else:
-            profile = ndi.gaussian_filter(reducfunc(res, axis=axis, keepdims=True), 
-                                       sigma=sigma)
-    
+            profile = ndi.gaussian_filter(reducfunc(res, axis=axis, keepdims=True),
+                                          sigma=sigma)
+
         res /= profile / profile.max()
     return res
 
@@ -175,19 +177,20 @@ def trim_nans2(image, return_lims=False):
 
 def generate_mask(dataset, mask_value, r=20):
     """Generate a boolean mask array covering everything that in
-    any image (stacked along axis=0) in dataset contains mask_value. 
+    any image (stacked along axis=0) in dataset contains mask_value.
     Perform an erosion with radius r to create a safety margin.
     """
     mask = ~da.any(dataset == mask_value, axis=0).compute()
     mask = ndi.binary_erosion(mask, structure=disk(r))
     return mask
 
+
 def cull_by_mask(data, mask):
     """Given a stack of images `data`, remove all rows and columns
     on the edges fully covered by `mask`, i.e. where mask==0.
     """
-    xlims = np.where(np.sum(mask,axis=1))[0]
-    ylims = np.where(np.sum(mask,axis=0))[0]
+    xlims = np.where(np.sum(mask, axis=1))[0]
+    ylims = np.where(np.sum(mask, axis=0))[0]
     return data[..., xlims.min():xlims.max()+1, ylims.min():ylims.max()+1]
 
 
